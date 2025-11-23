@@ -11,16 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 async def send_heartbeat() -> None:
-    """
-    Wysyła heartbeat agenta Raspberry do backendu przez NATS.
-    Zawiera: czas ISO, stany GPIO, status urządzeń.
-    """
 
-    await asyncio.sleep(1)  # czas na inicjalizacje
+    await asyncio.sleep(1)
 
     while True:
         try:
-            # Odczyt GPIO + stan urządzeń
             gpio_states: Dict[int, int] = gpio_manager.get_states()
             device_status: List[Dict[str, Any]] = gpio_manager.get_devices_status()
 

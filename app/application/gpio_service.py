@@ -1,4 +1,5 @@
 import logging
+
 from app.domain.events.device_events import DeviceCreatedPayload
 from app.domain.gpio.entities import GPIODevice
 from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
@@ -47,7 +48,6 @@ class GPIOService:
     # Aktualizacja istniejącego urządzenia
     # -----------------------------------------------------
     def update_device(self, payload):
-
         """
         payload: DeviceUpdatedPayload
         """

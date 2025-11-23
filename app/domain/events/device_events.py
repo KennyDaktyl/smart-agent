@@ -1,14 +1,8 @@
+from typing import List, Optional
+
 from pydantic import BaseModel
-from enum import Enum
-from typing import Optional, List
 
-
-class EventType(str, Enum):
-    DEVICE_CREATED = "DEVICE_CREATED"
-    DEVICE_UPDATED = "DEVICE_UPDATED"
-    POWER_READING = "POWER_READING"
-    DEVICE_COMMAND = "DEVICE_COMMAND"
-    UPDATE_REQUEST = "UPDATE_REQUEST"
+from app.domain.events.enums import EventType
 
 
 class BaseEvent(BaseModel):
@@ -17,7 +11,7 @@ class BaseEvent(BaseModel):
 
 class DeviceCreatedPayload(BaseModel):
     device_id: int
-    device_number: int        # 1..3
+    device_number: int
     mode: str
     threshold_w: Optional[float] = None
 

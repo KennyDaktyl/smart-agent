@@ -1,6 +1,8 @@
 from typing import Optional
+
 from pydantic import BaseModel
-from app.constans import EventType
+
+from app.domain.events.enums import EventType
 
 
 class DeviceCreatedEvent(BaseModel):

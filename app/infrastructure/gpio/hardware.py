@@ -2,9 +2,11 @@
 
 try:
     import RPi.GPIO as RPiGPIO
+
     REAL_GPIO = True
 except (ImportError, RuntimeError):
     REAL_GPIO = False
+
 
 class MockGPIO:
     BCM = "BCM"

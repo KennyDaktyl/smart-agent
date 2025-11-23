@@ -8,12 +8,6 @@ logger = logging.getLogger(__name__)
 class PinMapping:
 
     def __init__(self):
-        # cofamy się z:
-        # gpio_pin_mapping.py
-        # → gpio
-        # → infrastructure
-        # → app
-        # → project root  (tu leży gpio_mapping.json)
         self.root = Path(__file__).resolve().parents[3]
         self.path = self.root / "gpio_mapping.json"
         self.mapping = {}

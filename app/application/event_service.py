@@ -1,16 +1,10 @@
 import logging
 from typing import Union
 
-from app.domain.events.device_events import (
-    EventType,
-    DeviceCreatedEvent,
-    DeviceUpdatedEvent,
-    PowerReadingEvent,
-    DeviceCommandEvent,
-)
-
-from app.application.gpio_service import gpio_service
 from app.application.auto_power_service import auto_power_service
+from app.application.gpio_service import gpio_service
+from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent,
+                                             DeviceUpdatedEvent, EventType, PowerReadingEvent)
 
 logger = logging.getLogger(__name__)
 

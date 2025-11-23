@@ -4,42 +4,6 @@
   "active_low": true,
   "pins": [
     {
-      "device_id": 44,
-      "pin_number": 17,
-      "mode": "AUTO_POWER",
-      "power_threshold_w": 1000.0
-    },
-    {
-      "device_id": 45,
-      "pin_number": 17,
-      "mode": "MANUAL",
-      "power_threshold_w": null
-    },
-    {
-      "device_id": 78,
-      "pin_number": 17,
-      "mode": "MANUAL",
-      "power_threshold_w": null
-    },
-    {
-      "device_id": 79,
-      "pin_number": 17,
-      "mode": "MANUAL",
-      "power_threshold_w": null
-    },
-    {
-      "device_id": 80,
-      "pin_number": 17,
-      "mode": "MANUAL",
-      "power_threshold_w": null
-    },
-    {
-      "device_id": 81,
-      "pin_number": 17,
-      "mode": "MANUAL",
-      "power_threshold_w": null
-    },
-    {
       "device_id": 82,
       "pin_number": 17,
       "mode": "MANUAL",

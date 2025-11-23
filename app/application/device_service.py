@@ -1,14 +1,14 @@
 import logging
 from typing import List, Optional
 
-from app.domain.events.device_events import DeviceCommandPayload, DeviceCreatedPayload, DeviceDeletePayload, DeviceUpdatedPayload
+from app.domain.device.enums import DeviceMode
+from app.domain.events.device_events import (DeviceCommandPayload, DeviceCreatedPayload,
+                                             DeviceDeletePayload, DeviceUpdatedPayload)
 from app.domain.gpio.entities import GPIODevice
-from app.domain.gpio.enums import DeviceMode
-
 from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
-from app.infrastructure.gpio.device_number_mapping import pin_mapping
+from app.infrastructure.gpio.gpio_pin_mapping import pin_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -100,14 +100,11 @@ class GPIOService:
         Obsługuje TYLKO DeviceMode.MANUAL
         """
 
-        logger.info(
-            f"[MANUAL] SET_STATE → device_id={payload.device_id}, is_on={payload.is_on}"
-        )
+        logger.info(f"[MANUAL] SET_STATE → device_id={payload.device_id}, is_on={payload.is_on}")
 
         devices: List[GPIODevice] = gpio_config_storage.load()
         device: Optional[GPIODevice] = next(
-            (d for d in devices if d.device_id == payload.device_id),
-            None
+            (d for d in devices if d.device_id == payload.device_id), None
         )
 
         if not device:
@@ -134,9 +131,7 @@ class GPIOService:
         threshold = device.power_threshold_w
 
         if threshold is None:
-            logger.warning(
-                f"[AUTO] device_id={device.device_id} has no threshold → skipping"
-            )
+            logger.warning(f"[AUTO] device_id={device.device_id} has no threshold → skipping")
             return False
 
         should_turn_on = current_power >= threshold

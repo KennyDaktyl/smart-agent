@@ -22,12 +22,14 @@ class ConfigService:
     def add_device_to_config(self, device_id, pin, mode, threshold):
         config = self.load()
 
-        config["pins"].append({
-            "device_id": device_id,
-            "pin_number": pin,
-            "mode": mode,
-            "power_threshold_w": threshold,
-        })
+        config["pins"].append(
+            {
+                "device_id": device_id,
+                "pin_number": pin,
+                "mode": mode,
+                "power_threshold_w": threshold,
+            }
+        )
 
         self.save(config)
 

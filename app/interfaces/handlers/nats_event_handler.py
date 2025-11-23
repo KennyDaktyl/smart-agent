@@ -1,15 +1,11 @@
 import json
 import logging
-from app.domain.events.device_events import (
-    DeviceCreatedEvent,
-    DeviceUpdatedEvent,
-    PowerReadingEvent,
-    DeviceCommandEvent,
-    EventType
-)
-from app.core.nats_client import nats_client
-from app.core.config import settings
+
 from app.application.event_service import event_service
+from app.core.config import settings
+from app.core.nats_client import nats_client
+from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent,
+                                             DeviceUpdatedEvent, EventType, PowerReadingEvent)
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +41,7 @@ async def nats_event_handler(msg):
 
         # Backend ACK
         ack_subject = f"raspberry.{settings.RASPBERRY_UUID}.events.ack"
-        ack_payload = {
-            "device_id": event.payload.device_id,
-            "ok": True
-        }
+        ack_payload = {"device_id": event.payload.device_id, "ok": True}
 
         await nats_client.publish_raw(ack_subject, ack_payload)
         logger.info(f"✔ Backend ACK sent: {ack_payload}")

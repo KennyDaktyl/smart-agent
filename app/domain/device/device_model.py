@@ -1,18 +1,15 @@
-from pydantic import BaseModel
 from typing import Optional
 
-from app.domain.gpio.enums import DeviceMode
+from pydantic import BaseModel
+
+from app.domain.device.enums import DeviceMode
 
 
 class Device(BaseModel):
-    """
-    Główny model urządzenia znany backendowi.
-    Raspberry Agent widzi dane wyłącznie przez eventy NATS.
-    """
 
     id: int
     name: str
-    user_id: int               
+    user_id: int
     device_number: int
     mode: DeviceMode = DeviceMode.MANUAL
     power_threshold_w: Optional[float] = None
