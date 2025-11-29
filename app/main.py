@@ -4,7 +4,6 @@ import logging
 import sys
 from pathlib import Path
 
-
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import settings
@@ -26,36 +25,36 @@ async def main():
         await nats_client.connect()
 
         devices = gpio_config_storage.load()
+
         gpio_controller.load_from_entities(devices)
+
         gpio_manager.load_devices(devices)
-        gpio_controller.turn_all_off()
+
+        gpio_controller.initialize_pins()
 
         inverter_serial = gpio_config_storage.get_inverter_serial()
         if not inverter_serial:
             raise RuntimeError("INVERTER_SERIAL not set in config.json!")
 
-        subject = (
-            f"device_communication.inverter.{inverter_serial}.production.update"
-        )
+        subject = f"device_communication.inverter.{inverter_serial}.production.update"
         await nats_client.subscribe(subject, inverter_production_handler)
         logger.info(f"Subscribed to inverter power updates: {subject}")
         
         subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.events"
         await nats_client.subscribe_js(subject, nats_event_handler)
-        logger.info(f"Subscribed to Raspberry events. Subjct: {subject}")
-        
+        logger.info(f"Subscribed to Raspberry events. Subject: {subject}")
+
         asyncio.create_task(send_heartbeat())
-        # asyncio.create_task(monitor_gpio_changes())
 
         logging.info("🚀 Raspberry Agent started")
 
-        await asyncio.Future()
+        await asyncio.Event().wait()
 
     except asyncio.CancelledError:
         pass
 
     except KeyboardInterrupt:
-        logging.info("🛑 Agent Raspberry stopping due to keyboard interrupt.")
+        logging.info("🛑 Agent Raspberry stopping via keyboard interrupt.")
 
     finally:
         try:

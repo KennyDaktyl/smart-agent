@@ -79,6 +79,24 @@ class GPIOManager:
         await nats_client.publish(subject, payload)
 
         logger.info(f"Sent gpio_change event: {payload}")
+    
+    def set_state(self, device_id: int, is_on: bool) -> bool:
+        device = self.get_device(device_id)
+        if not device:
+            logger.error(f"GPIOManager: device_id={device_id} not found")
+            return False
+
+        device.is_on = is_on
+
+        pin = device.pin_number
+        self.previous_states[pin] = 0 if is_on else 1
+
+        logger.info(
+            f"GPIOManager: logical state updated device_id={device_id}, "
+            f"pin={pin}, is_on={is_on}"
+        )
+
+        return True
 
 
 gpio_manager = GPIOManager()

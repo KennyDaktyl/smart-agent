@@ -62,5 +62,14 @@ class GPIOConfigStorage:
         devices = [d for d in self.load() if d.device_id != device_id]
         self.save(devices)
 
+    def update_state(self, device_id: int, is_on: bool):
+        devices = self.load()
+
+        for d in devices:
+            if d.device_id == device_id:
+                d.is_on = is_on
+
+        self.save(devices)
+
 
 gpio_config_storage = GPIOConfigStorage()

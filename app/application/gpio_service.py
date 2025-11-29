@@ -85,12 +85,6 @@ class GPIOService:
     # Manualne sterowanie przekaźnikiem (DEVICE_COMMAND)
     # -----------------------------------------------------
     def set_manual_state(self, payload):
-        """
-        payload: DeviceCommandPayload
-            - device_id
-            - command ("SET_STATE")
-            - is_on
-        """
 
         logger.info(
             f"GPIOService: manual SET_STATE for device_id={payload.device_id}, is_on={payload.is_on}"
@@ -100,17 +94,22 @@ class GPIOService:
             logger.error(f"GPIOService: unknown command {payload.command}")
             return False
 
-        # fizyczne ustawienie przekaźnika
-        result = gpio_controller.set_state(payload.device_id, payload.is_on)
+        ok = gpio_controller.set_state(payload.device_id, payload.is_on)
+        if not ok:
+            return False
 
-        if result:
-            logger.info(
-                f"GPIOService: device {payload.device_id} manually set to {'ON' if payload.is_on else 'OFF'}"
-            )
-        else:
-            logger.error(f"GPIOService: failed to set device {payload.device_id}")
+        gpio_manager.set_state(payload.device_id, payload.is_on)
 
-        return result
+        gpio_config_storage.update_state(payload.device_id, payload.is_on)
+
+        logger.info(
+            f"GPIOService: device {payload.device_id} manually set to "
+            f"{'ON' if payload.is_on else 'OFF'} (GPIO + manager + config)"
+        )
+
+        return True
+
+
 
 
 gpio_service = GPIOService()

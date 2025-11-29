@@ -19,6 +19,10 @@ class GPIOController:
         except Exception as e:
             logger.error(f"GPIO init problem: {e}")
 
+    def initialize_pins(self):
+        for pin in self.pin_map.values():
+            GPIO.setup(pin, GPIO.OUT)
+
     def turn_all_off(self):
         for device_id, pin in self.pin_map.items():
             try:
