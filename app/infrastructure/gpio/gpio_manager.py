@@ -17,6 +17,9 @@ class GPIOManager:
 
         self.previous_states: Dict[int, Optional[int]] = {}
 
+    def get_device(self, device_id: int) -> Optional[GPIODevice]:
+        return self.devices.get(str(device_id))
+    
     def load_devices(self, devices: List[GPIODevice]) -> None:
         self.devices = {str(d.device_id): d for d in devices}
 
@@ -43,7 +46,7 @@ class GPIOManager:
                 "pin": d.pin_number,
                 "is_on": states[d.pin_number] == 0,
                 "mode": d.mode,
-                "threshold": d.power_threshold_w,
+                "threshold": d.power_threshold_kw,
             }
             for d in self.devices.values()
         ]

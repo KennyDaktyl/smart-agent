@@ -1,9 +1,9 @@
 # app/main.py
-
 import asyncio
 import logging
 import sys
 from pathlib import Path
+
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -15,8 +15,9 @@ from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 from app.interfaces.handlers.nats_event_handler import nats_event_handler
+from app.interfaces.handlers.power_reading_handler import inverter_production_handler
 
-logging.basicConfig(level=logging.INFO)
+from app.core.logging_config import logger
 
 
 async def main():
@@ -29,10 +30,20 @@ async def main():
         gpio_manager.load_devices(devices)
         gpio_controller.turn_all_off()
 
-        await nats_client.subscribe_js(
-            f"raspberry.{settings.RASPBERRY_UUID}.events", nats_event_handler
-        )
+        inverter_serial = gpio_config_storage.get_inverter_serial()
+        if not inverter_serial:
+            raise RuntimeError("INVERTER_SERIAL not set in config.json!")
 
+        subject = (
+            f"device_communication.inverter.{inverter_serial}.production.update"
+        )
+        await nats_client.subscribe(subject, inverter_production_handler)
+        logger.info(f"Subscribed to inverter power updates: {subject}")
+        
+        subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.events"
+        await nats_client.subscribe_js(subject, nats_event_handler)
+        logger.info(f"Subscribed to Raspberry events. Subjct: {subject}")
+        
         asyncio.create_task(send_heartbeat())
         # asyncio.create_task(monitor_gpio_changes())
 

@@ -22,7 +22,7 @@ class AutoPowerService:
             if d.mode != DeviceMode.AUTO_POWER.value:
                 continue
 
-            threshold = d.power_threshold_w or 0
+            threshold = d.power_threshold_kw or 0
 
             if power >= threshold:
                 gpio_controller.set_state(d.device_id, True)

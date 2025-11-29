@@ -2,7 +2,6 @@ import json
 import logging
 
 import nats
-from nats.js.api import RetentionPolicy, StreamConfig
 
 from app.core.config import settings
 
@@ -18,38 +17,41 @@ class NATSClient:
         logger.info(f"Connecting to NATS: {settings.NATS_URL}")
         self.nc = await nats.connect(settings.NATS_URL)
         self.js = self.nc.jetstream()
+
         logger.info("Connected to NATS & JetStream")
-        await self.ensure_streams()
 
-    async def ensure_streams(self):
-        await self.ensure_stream(
-            name="raspberry_events", subjects=[f"raspberry.{settings.RASPBERRY_UUID}.events"]
-        )
-
-        await self.ensure_stream(
-            name="raspberry_heartbeat", subjects=[f"raspberry.{settings.RASPBERRY_UUID}.heartbeat"]
-        )
-
-        await self.ensure_stream(
-            name="raspberry_gpio", subjects=[f"raspberry.{settings.RASPBERRY_UUID}.gpio_change"]
-        )
-
-    async def ensure_stream(self, name: str, subjects: list[str]):
         try:
-            await self.js.stream_info(name)
+            await self.js.stream_info("device_communication")
+            logger.info("Stream device_communication found.")
         except Exception:
-            cfg = StreamConfig(name=name, subjects=subjects, retention=RetentionPolicy.LIMITS)
-            await self.js.add_stream(cfg)
+            logger.error("Stream device_communication not found!")
+            raise RuntimeError("JetStream stream 'device_communication' must be created by backend.")
 
-    async def publish(self, subject: str, payload: dict):
-        data = json.dumps(payload).encode()
+    async def ensure_connected(self):
+        if not self.nc or not self.nc.is_connected:
+            await self.connect()
+
+    async def js_publish(self, subject: str, payload: dict):
+        await self.ensure_connected()
+
+        data = json.dumps(payload).encode("utf-8")
         await self.js.publish(subject, data)
 
     async def publish_raw(self, subject: str, payload: dict):
-        data = json.dumps(payload).encode()
+        await self.ensure_connected()
+        data = json.dumps(payload).encode("utf-8")
         await self.nc.publish(subject, data)
 
+    async def subscribe(self, subject: str, handler):
+        await self.ensure_connected()
+
+        sub = await self.nc.subscribe(subject, cb=handler)
+        logger.info(f"[NATS] Subscribed to subject: {subject}")
+
+        return sub
+    
     async def subscribe_js(self, subject: str, handler):
+        await self.ensure_connected()
         durable = subject.replace(".", "_")
         return await self.js.subscribe(subject, durable=durable, cb=handler)
 

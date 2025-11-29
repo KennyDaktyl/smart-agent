@@ -13,7 +13,7 @@ class DeviceCreatedPayload(BaseModel):
     device_id: int
     device_number: int
     mode: str
-    threshold_w: Optional[float] = None
+    threshold_kw: Optional[float] = None
 
 
 class DeviceCreatedEvent(BaseEvent):
@@ -23,7 +23,7 @@ class DeviceCreatedEvent(BaseEvent):
 class DeviceUpdatedPayload(BaseModel):
     device_id: int
     mode: str
-    threshold_w: Optional[float] = None
+    threshold_kw: Optional[float] = None
 
 
 class DeviceUpdatedEvent(BaseEvent):
@@ -32,6 +32,10 @@ class DeviceUpdatedEvent(BaseEvent):
 
 class DeviceDeletePayload(BaseModel):
     device_id: int
+
+class DeviceDeletedEvent(BaseModel):
+    event_type: str
+    payload: DeviceDeletePayload
 
 
 class PowerReadingPayload(BaseModel):

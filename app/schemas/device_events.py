@@ -10,14 +10,14 @@ class DeviceCreatedEvent(BaseModel):
     device_id: int
     gpio_pin: int
     mode: str
-    threshold_w: Optional[float]
+    threshold_kw: Optional[float]
 
 
 class DeviceUpdatedEvent(BaseModel):
     event: EventType = EventType.DEVICE_UPDATED
     device_id: int
     mode: str
-    threshold_w: Optional[float]
+    threshold_kw: Optional[float]
 
 
 class PowerReadingEvent(BaseModel):

@@ -1,3 +1,4 @@
+# app/infrastructure/gpio/gpio_mapper.py
 from app.domain.gpio.gpio_device_config import GPIODeviceConfig
 
 
@@ -9,5 +10,5 @@ class GPIOMapper:
             device_id=data["device_id"],
             pin_number=data["pin_number"],
             mode=data["mode"],
-            power_threshold_w=data.get("power_threshold_w"),
+            power_threshold_kw=data.get("power_threshold_kw"),
         )

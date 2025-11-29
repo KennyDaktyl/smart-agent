@@ -1,3 +1,4 @@
+# app/infrastructure/gpio/gpio_pin_mapping.py
 import json
 import logging
 from pathlib import Path

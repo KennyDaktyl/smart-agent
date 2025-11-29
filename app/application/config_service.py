@@ -27,7 +27,7 @@ class ConfigService:
                 "device_id": device_id,
                 "pin_number": pin,
                 "mode": mode,
-                "power_threshold_w": threshold,
+                "power_threshold_kw": threshold,
             }
         )
 
@@ -39,7 +39,7 @@ class ConfigService:
         for pin_cfg in config["pins"]:
             if pin_cfg["device_id"] == device_id:
                 pin_cfg["mode"] = mode
-                pin_cfg["power_threshold_w"] = threshold
+                pin_cfg["power_threshold_kw"] = threshold
 
         self.save(config)
 

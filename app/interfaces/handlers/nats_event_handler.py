@@ -1,10 +1,11 @@
+# app/interfaces/handlers/nats_event_handler.py
 import json
 import logging
 
 from app.application.event_service import event_service
 from app.core.config import settings
 from app.core.nats_client import nats_client
-from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent,
+from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent, DeviceDeletedEvent,
                                              DeviceUpdatedEvent, EventType, PowerReadingEvent)
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,10 @@ async def nats_event_handler(msg):
 
             case EventType.DEVICE_UPDATED:
                 event = DeviceUpdatedEvent(**raw)
-
+                
+            case EventType.DEVICE_DELETED:
+                event = DeviceDeletedEvent(**raw)
+                
             case EventType.POWER_READING:
                 event = PowerReadingEvent(**raw)
 
@@ -40,11 +44,11 @@ async def nats_event_handler(msg):
         logger.info("JetStream ACK sent.")
 
         # Backend ACK
-        ack_subject = f"raspberry.{settings.RASPBERRY_UUID}.events.ack"
+        ack_subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.events.ack"
         ack_payload = {"device_id": event.payload.device_id, "ok": True}
 
         await nats_client.publish_raw(ack_subject, ack_payload)
-        logger.info(f"✔ Backend ACK sent: {ack_payload}")
+        logger.info(f"✔ Backend ACK subject={ack_subject} | sent: {ack_payload}")
 
     except Exception:
         logger.exception("Error while handling event")

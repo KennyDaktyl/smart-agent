@@ -14,6 +14,8 @@ async def send_heartbeat() -> None:
 
     await asyncio.sleep(1)
 
+    subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.heartbeat"
+
     while True:
         try:
             gpio_states: Dict[int, int] = gpio_manager.get_states()
@@ -22,20 +24,18 @@ async def send_heartbeat() -> None:
             payload = {
                 "uuid": settings.RASPBERRY_UUID,
                 "status": "online",
-                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "timestamp": int(datetime.now(timezone.utc).timestamp()),
                 "gpio_count": len(gpio_states),
                 "device_count": len(device_status),
                 "gpio": gpio_states,
                 "devices": device_status,
             }
 
-            subject = f"raspberry.{settings.RASPBERRY_UUID}.heartbeat"
-            await nats_client.publish(subject, payload)
+            # JETSTREAM — PUBLISH
+            await nats_client.js_publish(subject, payload)
 
             logger.info(
-                f"[HEARTBEAT] uuid={payload['uuid']} | gpio={payload['gpio_count']} | "
-                f"devices={payload['device_count']} | sent_at={payload['sent_at']} | "
-                f"subject={subject}"
+                f"[HEARTBEAT] subject={subject} | payload: {payload}"
             )
 
         except Exception as e:

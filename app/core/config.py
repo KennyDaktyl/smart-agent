@@ -1,3 +1,4 @@
+# app/core/config.py
 import json
 from pathlib import Path
 
@@ -13,13 +14,13 @@ class Settings(BaseSettings):
     NATS_URL: str = Field("nats://localhost:4222", env="NATS_URL")
     HEARTBEAT_INTERVAL: int = Field(30, env="HEARTBEAT_INTERVAL")
 
-    GPIO_PINS: dict = Field(default_factory=dict)
     LOG_DIR: str = Field("logs", env="LOG_DIR")
-    CONFIG_FILE: str = Field("config", env="CONFIG_FILE")
+    CONFIG_FILE: str = Field("config.json", env="CONFIG_FILE")
 
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()
@@ -35,6 +36,3 @@ def load_gpio_config() -> dict:
         except json.JSONDecodeError:
             print("Failed to decode JSON from config file.")
     return {}
-
-
-settings.GPIO_PINS = load_gpio_config()

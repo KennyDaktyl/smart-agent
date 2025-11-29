@@ -30,6 +30,10 @@ class GPIOConfigStorage:
         data = self.load_raw()
         return [GPIODevice(**p) for p in data.get("pins", [])]
 
+    def get_inverter_serial(self) -> str | None:
+        data = self.load_raw()
+        return data.get("inverter_serial")
+    
     def save(self, devices: List[GPIODevice]):
 
         raw = self.load_raw()

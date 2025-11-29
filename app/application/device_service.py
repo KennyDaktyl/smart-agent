@@ -27,7 +27,7 @@ class GPIOService:
             device_id=payload.device_id,
             pin_number=device_number,
             mode=DeviceMode(payload.mode),
-            power_threshold_w=payload.threshold_w,
+            power_threshold_kw=payload.threshold_kw,
         )
 
         devices.append(new_device)
@@ -40,7 +40,7 @@ class GPIOService:
         logger.info(
             f"[CREATE] device_id={payload.device_id} "
             f"(device_number={payload.device_number} → pin={device_number}) "
-            f"mode={payload.mode}, threshold={payload.threshold_w}"
+            f"mode={payload.mode}, threshold={payload.threshold_kw}"
         )
 
     def update_device(self, payload: DeviceUpdatedPayload):
@@ -54,7 +54,7 @@ class GPIOService:
         for device in devices:
             if device.device_id == payload.device_id:
                 device.mode = DeviceMode(payload.mode)
-                device.power_threshold_w = payload.threshold_w
+                device.power_threshold_kw = payload.threshold_kw
                 updated = True
                 break
 
@@ -69,7 +69,7 @@ class GPIOService:
         gpio_manager.load_devices(devices)
 
         logger.info(
-            f"[UPDATE] device_id={payload.device_id} mode={payload.mode} threshold={payload.threshold_w}"
+            f"[UPDATE] device_id={payload.device_id} mode={payload.mode} threshold={payload.threshold_kw}"
         )
         return True
 
@@ -128,7 +128,7 @@ class GPIOService:
         current_power: float
         """
 
-        threshold = device.power_threshold_w
+        threshold = device.power_threshold_kw
 
         if threshold is None:
             logger.warning(f"[AUTO] device_id={device.device_id} has no threshold → skipping")

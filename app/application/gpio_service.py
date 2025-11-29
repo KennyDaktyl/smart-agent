@@ -1,3 +1,4 @@
+# app/application/gpio_service.py
 import logging
 
 from app.domain.events.device_events import DeviceCreatedPayload
@@ -12,22 +13,20 @@ logger = logging.getLogger(__name__)
 
 class GPIOService:
 
-    # -----------------------------------------------------
-    # Tworzenie nowego lokalnego urządzenia
-    # -----------------------------------------------------
     def create_device(self, payload: DeviceCreatedPayload):
         """
         payload: DeviceCreatedPayload
         """
         devices = gpio_config_storage.load()
 
-        device_number = pin_mapping.get_pin(payload.device_number)
+        pin_number = pin_mapping.get_pin(payload.device_number)
 
         new_device = GPIODevice(
             device_id=payload.device_id,
-            pin_number=device_number,
+            device_number=payload.device_number,
+            pin_number=pin_number,
             mode=payload.mode,
-            power_threshold_w=payload.threshold_w,
+            power_threshold_kw=payload.threshold_kw,
         )
 
         devices.append(new_device)
@@ -41,24 +40,20 @@ class GPIOService:
 
         logger.info(
             f"GPIOService: created device {payload.device_id} "
-            f"(device_number={payload.device_number} → pin={device_number})"
+            f"(device_number={payload.device_number} → pin={pin_number})"
         )
 
     # -----------------------------------------------------
     # Aktualizacja istniejącego urządzenia
     # -----------------------------------------------------
     def update_device(self, payload):
-        """
-        payload: DeviceUpdatedPayload
-        """
-
         devices = gpio_config_storage.load()
         updated = False
 
         for d in devices:
             if d.device_id == payload.device_id:
                 d.mode = payload.mode
-                d.power_threshold_w = payload.threshold_w
+                d.power_threshold_kw = payload.threshold_kw
                 updated = True
 
         if not updated:
@@ -74,6 +69,18 @@ class GPIOService:
         logger.info(f"GPIOService: updated device {payload.device_id}")
         return True
 
+    def delete_device(self, payload):
+        devices = gpio_config_storage.load()
+        devices = [d for d in devices if d.device_id != payload.device_id]
+
+        gpio_config_storage.save(devices)
+
+        gpio_controller.active_low = pin_mapping.is_active_low()
+        gpio_controller.load_from_entities(devices)
+        gpio_manager.load_devices(devices)
+
+        logger.info(f"GPIOService: deleted device {payload.device_id}")
+        
     # -----------------------------------------------------
     # Manualne sterowanie przekaźnikiem (DEVICE_COMMAND)
     # -----------------------------------------------------

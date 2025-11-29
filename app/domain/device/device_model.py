@@ -12,7 +12,7 @@ class Device(BaseModel):
     user_id: int
     device_number: int
     mode: DeviceMode = DeviceMode.MANUAL
-    power_threshold_w: Optional[float] = None
+    power_threshold_kw: Optional[float] = None
     inverter_id: Optional[int] = None
     raspberry_uuid: Optional[str] = None
 

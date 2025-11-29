@@ -1,9 +1,10 @@
+# app/application/event_service.py
 import logging
 from typing import Union
 
 from app.application.auto_power_service import auto_power_service
 from app.application.gpio_service import gpio_service
-from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent,
+from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent, DeviceDeletedEvent,
                                              DeviceUpdatedEvent, EventType, PowerReadingEvent)
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,9 @@ class EventService:
             case EventType.DEVICE_UPDATED:
                 return await self._handle_device_updated(event)
 
+            case EventType.DEVICE_DELETED:
+                return await self._handle_device_deleted(event)
+            
             case EventType.POWER_READING:
                 return await self._handle_power_reading(event)
 
@@ -50,6 +54,11 @@ class EventService:
         gpio_service.update_device(event.payload)
         return True
 
+    async def _handle_device_deleted(self, event: DeviceDeletedEvent):
+        logger.info(f"Deleting device -> {event.payload}")
+        gpio_service.delete_device(event.payload)
+        return True
+    
     async def _handle_power_reading(self, event: PowerReadingEvent):
         logger.info(f"Handling power reading -> {event.payload}")
         await auto_power_service.handle_power_reading(event.payload)

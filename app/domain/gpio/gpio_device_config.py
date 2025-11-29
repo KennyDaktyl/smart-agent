@@ -9,4 +9,4 @@ class GPIODeviceConfig(BaseModel):
     device_id: int
     pin_number: int
     mode: DeviceMode
-    power_threshold_w: Optional[float] = None
+    power_threshold_kw: Optional[float] = None
