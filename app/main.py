@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-
+import inspect
 from app.core.config import settings
 from app.core.gpio_monitor import monitor_gpio_changes
 from app.core.heartbeat import send_heartbeat
@@ -23,6 +23,9 @@ async def main():
 
     try:
         await nats_client.connect()
+        
+        logger.warning("=== LOADED CODE FOR get_devices_status() ===")
+        logger.warning(inspect.getsource(gpio_manager.get_devices_status))
 
         devices = gpio_config_storage.load()
 

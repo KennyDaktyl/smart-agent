@@ -39,6 +39,8 @@ class GPIOManager:
         return states
 
     def get_devices_status(self):
+        logger.warning(f"[DEBUG] get_devices_status() ACTIVE_LOW={gpio_controller.active_low}")
+
         states = self.get_states()
 
         results = []
@@ -58,6 +60,7 @@ class GPIOManager:
                 "mode": d.mode,
                 "threshold": d.power_threshold_kw,
             })
+            logger.warning(f"[DEBUG] STATUS: device={d.device_id} raw={raw} active_low={gpio_controller.active_low} is_on={is_on}")
 
         return results
 
