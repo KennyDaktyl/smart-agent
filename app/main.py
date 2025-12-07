@@ -28,7 +28,6 @@ async def main():
         logger.warning(inspect.getsource(gpio_manager.get_devices_status))
 
         devices = gpio_config_storage.load()
-        gpio_controller.active_low = gpio_config_storage.get_active_low()
         
         gpio_controller.load_from_entities(devices)
 

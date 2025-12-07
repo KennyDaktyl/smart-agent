@@ -6,7 +6,7 @@ from typing import Dict, List
 from app.core.config import settings
 from app.domain.gpio.entities import GPIODevice
 
-DEFAULT_CONFIG = {"raspberry_uuid": None, "device_max": 1, "active_low": True, "pins": []}
+DEFAULT_CONFIG = {"raspberry_uuid": None, "device_max": 1, "pins": []}
 
 
 class GPIOConfigStorage:
@@ -28,11 +28,17 @@ class GPIOConfigStorage:
 
     def load(self) -> List[GPIODevice]:
         data = self.load_raw()
-        return [GPIODevice(**p) for p in data.get("pins", [])]
+        global_active_low = data.get("active_low")  # backward compatibility
 
-    def get_active_low(self) -> bool:
-        data = self.load_raw()
-        return bool(data.get("active_low", True))
+        devices: List[GPIODevice] = []
+        for pin_data in data.get("pins", []):
+            parsed = pin_data.copy()
+            if "active_low" not in parsed and global_active_low is not None:
+                parsed["active_low"] = bool(global_active_low)
+
+            devices.append(GPIODevice(**parsed))
+
+        return devices
 
     def get_inverter_serial(self) -> str | None:
         data = self.load_raw()

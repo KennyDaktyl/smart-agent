@@ -1,0 +1,7 @@
+PROD
+docker build -t agent:prod --target prod .
+docker compose up -d --build
+
+DEV
+docker build -t agent:dev --target dev .
+docker compose -f docker-compose.dev.yml up --build

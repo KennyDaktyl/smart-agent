@@ -14,3 +14,4 @@ class GPIODevice(BaseModel):
     mode: DeviceMode
     power_threshold_kw: Optional[float]
     is_on: Optional[bool] = None
+    active_low: bool = True

@@ -4,6 +4,7 @@ import logging
 from app.domain.events.device_events import DeviceCreatedPayload
 from app.domain.gpio.entities import GPIODevice
 from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
+from app.infrastructure.backend.backend_adapter import backend_adapter
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 from app.infrastructure.gpio.gpio_pin_mapping import pin_mapping
@@ -19,7 +20,7 @@ class GPIOService:
         """
         devices = gpio_config_storage.load()
 
-        pin_number = pin_mapping.get_pin(payload.device_number)
+        pin_number, active_low = pin_mapping.get_pin_config(payload.device_number)
 
         new_device = GPIODevice(
             device_id=payload.device_id,
@@ -27,13 +28,11 @@ class GPIOService:
             pin_number=pin_number,
             mode=payload.mode,
             power_threshold_kw=payload.threshold_kw,
+            active_low=active_low,
         )
 
         devices.append(new_device)
         gpio_config_storage.save(devices)
-
-        # aktualizacja active_low
-        gpio_controller.active_low = gpio_config_storage.get_active_low()
 
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
@@ -62,7 +61,6 @@ class GPIOService:
 
         gpio_config_storage.save(devices)
 
-        gpio_controller.active_low = gpio_config_storage.get_active_low()
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
@@ -75,7 +73,6 @@ class GPIOService:
 
         gpio_config_storage.save(devices)
 
-        gpio_controller.active_low = gpio_config_storage.get_active_low()
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
@@ -101,6 +98,13 @@ class GPIOService:
         gpio_manager.set_state(payload.device_id, payload.is_on)
 
         gpio_config_storage.update_state(payload.device_id, payload.is_on)
+
+        # Report to backend (fire-and-forget)
+        backend_adapter.log_device_event(
+            device_id=payload.device_id,
+            pin_state=payload.is_on,
+            trigger_reason="DEVICE_COMMAND",
+        )
 
         logger.info(
             f"GPIOService: device {payload.device_id} manually set to "

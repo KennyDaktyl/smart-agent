@@ -5,6 +5,7 @@ from app.domain.device.enums import DeviceMode
 from app.domain.events.device_events import (DeviceCommandPayload, DeviceCreatedPayload,
                                              DeviceDeletePayload, DeviceUpdatedPayload)
 from app.domain.gpio.entities import GPIODevice
+from app.infrastructure.backend.backend_adapter import backend_adapter
 from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
@@ -21,25 +22,26 @@ class GPIOService:
         """
         devices: List[GPIODevice] = gpio_config_storage.load()
 
-        device_number = pin_mapping.get_pin(payload.device_number)
+        pin_number, active_low = pin_mapping.get_pin_config(payload.device_number)
 
         new_device = GPIODevice(
             device_id=payload.device_id,
-            pin_number=device_number,
+            pin_number=pin_number,
             mode=DeviceMode(payload.mode),
             power_threshold_kw=payload.threshold_kw,
+            device_number=payload.device_number,
+            active_low=active_low,
         )
 
         devices.append(new_device)
         gpio_config_storage.save(devices)
 
-        gpio_controller.active_low = gpio_config_storage.get_active_low()
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
         logger.info(
             f"[CREATE] device_id={payload.device_id} "
-            f"(device_number={payload.device_number} → pin={device_number}) "
+            f"(device_number={payload.device_number} → pin={pin_number}) "
             f"mode={payload.mode}, threshold={payload.threshold_kw}"
         )
 
@@ -64,7 +66,6 @@ class GPIOService:
 
         gpio_config_storage.save(devices)
 
-        gpio_controller.active_low = gpio_config_storage.get_active_low()
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
@@ -87,7 +88,6 @@ class GPIOService:
 
         gpio_config_storage.save(devices)
 
-        gpio_controller.active_low = gpio_config_storage.get_active_low()
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
@@ -118,7 +118,17 @@ class GPIOService:
             )
             return False
 
-        return gpio_controller.set_state(device.device_id, payload.is_on)
+        ok = gpio_controller.set_state(device.device_id, payload.is_on)
+        if not ok:
+            return False
+
+        backend_adapter.log_device_event(
+            device_id=device.device_id,
+            pin_state=payload.is_on,
+            trigger_reason="DEVICE_COMMAND",
+        )
+
+        return True
 
     def set_auto_state(self, device: GPIODevice, current_power: float):
         """

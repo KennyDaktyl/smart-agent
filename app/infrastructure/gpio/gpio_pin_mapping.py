@@ -11,7 +11,7 @@ class PinMapping:
     def __init__(self):
         self.root = Path(__file__).resolve().parents[3]
         self.path = self.root / "gpio_mapping.json"
-        self.mapping = {}
+        self.mapping: dict[str, dict] = {}
 
         self.load()
 
@@ -33,12 +33,28 @@ class PinMapping:
 
         logger.info(f"Loaded GPIO mapping from {self.path}")
 
-    def get_pin(self, device_number: int) -> int:
-        pin = self.mapping["device_pin_map"].get(str(device_number))
-        if pin is None:
+    def get_pin_config(self, device_number: int) -> tuple[int, bool]:
+        raw = self.mapping["device_pin_map"].get(str(device_number))
+        if raw is None:
             raise ValueError(
                 f"gpio_mapping.json: device_number {device_number} has no assigned GPIO pin."
             )
+
+        if isinstance(raw, int):
+            # backward compatibility: default active_low=True when only pin is provided
+            return raw, True
+
+        if isinstance(raw, dict):
+            if "pin" not in raw:
+                raise ValueError(f"gpio_mapping.json entry for device_number {device_number} missing 'pin'")
+            pin = raw["pin"]
+            active_low = bool(raw.get("active_low", True))
+            return pin, active_low
+
+        raise ValueError(f"gpio_mapping.json entry for device_number {device_number} has invalid format: {raw}")
+
+    def get_pin(self, device_number: int) -> int:
+        pin, _ = self.get_pin_config(device_number)
         return pin
 
 

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     LOG_DIR: str = Field("logs", env="LOG_DIR")
     CONFIG_FILE: str = Field("config.json", env="CONFIG_FILE")
+    BACKEND_URL: str | None = Field(None, env="BACKEND_URL")
 
     class Config:
         env_file = ".env"

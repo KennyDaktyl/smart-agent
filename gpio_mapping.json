@@ -1,8 +1,5 @@
 {
-    "device_pin_map": {
-      "1": 17,
-      "2": 27,
-      "3": 22
-    }
+  "device_pin_map": {
+    "1": { "pin": 17, "active_low": false }
   }
-  
+}

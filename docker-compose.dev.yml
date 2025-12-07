@@ -3,14 +3,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: prod
-    container_name: smart_energy_agent
+      target: dev
+    container_name: smart_energy_agent_dev
     restart: unless-stopped
     privileged: true
     network_mode: host
 
     volumes:
+      - ./app:/app
       - ./config.json:/app/config.json:rw
 
     env_file:
       - .env
+
+    environment:
+      LOG_DIR: /app/logs

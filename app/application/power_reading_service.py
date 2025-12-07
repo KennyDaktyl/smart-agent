@@ -22,8 +22,16 @@ class PowerReadingService:
         ]
 
     async def handle_inverter_power(self, event: InverterProductionEvent) -> None:
-        power: float = event.payload.active_power
+        power = event.payload.active_power
         logger.info(f"Received inverter power = {power} W")
+
+        if power is None:
+            logger.warning("Active power missing. Forcing all AUTO_POWER devices OFF for safety.")
+            for device in self._get_auto_power_devices():
+                if gpio_controller.set_state(device.device_id, False):
+                    gpio_manager.set_state(device.device_id, False)
+                    gpio_config_storage.update_state(device.device_id, False)
+            return
 
         auto_devices: List[GPIODevice] = self._get_auto_power_devices()
 
@@ -52,15 +60,18 @@ class PowerReadingService:
             should_turn_on: bool = power >= threshold
 
             raw = pin_states.get(pin)
+            if raw is None:
+                logger.warning(f"Pin state missing for device_id={device_id} pin={pin}. Forcing OFF.")
+                if gpio_controller.set_state(device_id, False):
+                    gpio_manager.set_state(device_id, False)
+                    gpio_config_storage.update_state(device_id, False)
+                continue
 
-            if gpio_controller.active_low:
-                current_is_on = (raw == GPIO.LOW)
-            else:
-                current_is_on = (raw == GPIO.HIGH)
+            current_is_on = gpio_manager.raw_to_is_on(device, raw)
 
             logger.info(
                 f"[STATE] device_id={device_id} current_is_on={current_is_on}, "
-                f"should_turn_on={should_turn_on}, active_low={gpio_controller.active_low}"
+                f"should_turn_on={should_turn_on}, active_low={device.active_low}"
             )
 
             if current_is_on == should_turn_on:

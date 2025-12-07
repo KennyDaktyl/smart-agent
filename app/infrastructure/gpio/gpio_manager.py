@@ -15,17 +15,18 @@ class GPIOManager:
     def __init__(self):
         self.devices: Dict[str, GPIODevice] = {}
         self.previous_states: Dict[int, Optional[int]] = {}
+        self.pin_to_device: Dict[int, str] = {}
 
     @staticmethod
-    def raw_to_is_on(raw: int) -> bool:
-        if gpio_controller.active_low:
+    def raw_to_is_on(device: GPIODevice, raw: int) -> bool:
+        if device.active_low:
             return raw == GPIO.LOW
-        else:
-            return raw == GPIO.HIGH
+        return raw == GPIO.HIGH
 
     def load_devices(self, devices: List[GPIODevice]) -> None:
         self.devices = {str(d.device_id): d for d in devices}
         self.previous_states = {d.pin_number: None for d in devices}
+        self.pin_to_device = {d.pin_number: str(d.device_id) for d in devices}
         logger.info(f"GPIOManager: loaded {len(devices)} devices")
 
     def get_states(self) -> Dict[int, int]:
@@ -45,8 +46,10 @@ class GPIOManager:
 
         results = []
         for d in self.devices.values():
-            raw = states[d.pin_number]
-            is_on = self.raw_to_is_on(raw)
+            raw = states.get(d.pin_number)
+            if raw is None:
+                raw = GPIO.HIGH if d.active_low else GPIO.LOW
+            is_on = self.raw_to_is_on(d, raw)
 
             results.append({
                 "device_id": d.device_id,
@@ -64,7 +67,7 @@ class GPIOManager:
             return False
 
         raw = gpio_controller.read_pin(device.pin_number)
-        return self.raw_to_is_on(raw)
+        return self.raw_to_is_on(device, raw)
 
     async def detect_changes(self) -> None:
         current = self.get_states()
@@ -85,10 +88,16 @@ class GPIOManager:
             self.previous_states[pin] = new_raw
 
     async def send_change_event(self, pin: int, raw: int) -> None:
+        device_id = self.pin_to_device.get(pin)
+        device = self.devices.get(device_id) if device_id else None
+        if not device:
+            logger.error(f"Cannot send change event: device for pin {pin} not found")
+            return
+
         payload = {
             "uuid": settings.RASPBERRY_UUID,
             "pin": pin,
-            "state": self.raw_to_is_on(raw),
+            "state": self.raw_to_is_on(device, raw),
         }
 
         subject = f"raspberry.{settings.RASPBERRY_UUID}.gpio_change"
@@ -104,7 +113,7 @@ class GPIOManager:
 
         device.is_on = is_on
 
-        if gpio_controller.active_low:
+        if device.active_low:
             raw = GPIO.LOW if is_on else GPIO.HIGH
         else:
             raw = GPIO.HIGH if is_on else GPIO.LOW

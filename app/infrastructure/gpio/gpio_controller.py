@@ -11,7 +11,7 @@ class GPIOController:
 
     def __init__(self):
         self.pin_map: dict[str, int] = {}
-        self.active_low: bool = True
+        self.active_low_map: dict[str, bool] = {}
 
         try:
             GPIO.setwarnings(False)
@@ -20,27 +20,20 @@ class GPIOController:
             logger.error(f"GPIO init problem: {e}")
 
     def initialize_pins(self):
-        for pin in self.pin_map.values():
+        for device_id, pin in self.pin_map.items():
             GPIO.setup(pin, GPIO.OUT)
-
-    # def turn_all_off(self):
-    #     for device_id, pin in self.pin_map.items():
-    #         try:
-    #             GPIO.setup(pin, GPIO.OUT)
-
-    #             if self.active_low:
-    #                 GPIO.output(pin, GPIO.HIGH)
-    #             else:
-    #                 GPIO.output(pin, GPIO.LOW)
-
-    #             logger.info(f"GPIOController: Forced OFF device {device_id} (pin {pin}) on startup")
-
-    #         except Exception as e:
-    #             logger.error(f"GPIOController: Error forcing OFF pin {pin}: {e}")
+            active_low = self.active_low_map.get(device_id, True)
+            try:
+                # Default every pin to OFF on startup for safety.
+                GPIO.output(pin, GPIO.HIGH if active_low else GPIO.LOW)
+                logger.info(f"GPIOController: init device {device_id} (pin {pin}) to OFF (active_low={active_low})")
+            except Exception as e:
+                logger.error(f"GPIOController: Error forcing OFF pin {pin}: {e}")
 
     def load_from_entities(self, devices: list[GPIODevice]):
         self.pin_map = {str(device.device_id): device.pin_number for device in devices}
-        logger.info(f"GPIOController: loaded pin mapping {self.pin_map}")
+        self.active_low_map = {str(device.device_id): bool(device.active_low) for device in devices}
+        logger.info(f"GPIOController: loaded pin mapping {self.pin_map} with active_low {self.active_low_map}")
 
     def read_pin(self, pin: int) -> int:
         try:
@@ -49,11 +42,11 @@ class GPIOController:
             logger.exception(f"GPIO read error on pin {pin}")
             return GPIO.HIGH
 
-    def direct_pin_control(self, gpio_pin: int, is_on: bool) -> bool:
+    def direct_pin_control(self, gpio_pin: int, is_on: bool, active_low: bool) -> bool:
         try:
             GPIO.setup(gpio_pin, GPIO.OUT)
 
-            if self.active_low:
+            if active_low:
                 value = GPIO.LOW if is_on else GPIO.HIGH
             else:
                 value = GPIO.HIGH if is_on else GPIO.LOW
@@ -71,7 +64,9 @@ class GPIOController:
             logger.error(f"No pin mapped for device_id={device_id}")
             return False
 
-        return self.direct_pin_control(pin, is_on)
+        active_low = self.active_low_map.get(str(device_id), True)
+
+        return self.direct_pin_control(pin, is_on, active_low)
 
 
 gpio_controller = GPIOController()

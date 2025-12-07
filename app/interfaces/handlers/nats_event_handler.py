@@ -38,17 +38,41 @@ async def nats_event_handler(msg):
                 logger.error(f"Unknown event type: {event_type}")
                 return
 
-        await event_service.handle_event(event)
+        ok = False
+        try:
+            result = await event_service.handle_event(event)
+            ok = bool(result) or result is None  # treat None as success for backward compatibility
+        except Exception:
+            logger.exception("Error while handling event")
+            ok = False
 
         await msg.ack()
         logger.info("JetStream ACK sent.")
 
         # Backend ACK
         ack_subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.events.ack"
-        ack_payload = {"device_id": event.payload.device_id, "ok": True}
+        payload_dict = event.payload.model_dump()
+
+        device_id = payload_dict.get("device_id")
+        manual_state = payload_dict.get("is_on") if "is_on" in payload_dict else payload_dict.get("manual_state")
+
+        # Format przyjazny backendowi:
+        #  - top-level device_id
+        #  - top-level ok (dla .get("ok"))
+        #  - opcjonalny manual_state (alias is_on)
+        #  - wewnętrzny ack dla zgodności wstecznej
+        ack_payload = {
+            "device_id": device_id,
+            "ok": ok,
+            **({"manual_state": manual_state} if manual_state is not None else {}),
+            "ack": {
+                "device_id": device_id,
+                "ok": ok,
+            },
+        }
 
         await nats_client.publish_raw(ack_subject, ack_payload)
         logger.info(f"✔ Backend ACK subject={ack_subject} | sent: {ack_payload}")
 
     except Exception:
-        logger.exception("Error while handling event")
+        logger.exception("Unhandled error while processing NATS event")
