@@ -16,6 +16,7 @@ async def send_heartbeat() -> None:
     await asyncio.sleep(1)
 
     subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.heartbeat"
+    safety_shutdown_triggered = False
 
     while True:
         try:
@@ -43,8 +44,13 @@ async def send_heartbeat() -> None:
             logger.info(
                 f"[HEARTBEAT] subject={subject} | payload: {message}"
             )
+            safety_shutdown_triggered = False
 
         except Exception as e:
             logger.exception(f"Heartbeat error: {e}")
+            if not safety_shutdown_triggered:
+                logger.warning("Heartbeat failed; triggering safety shutdown (all devices OFF).")
+                gpio_manager.force_all_off(reason="HEARTBEAT_FAILURE")
+                safety_shutdown_triggered = True
 
         await asyncio.sleep(settings.HEARTBEAT_INTERVAL)

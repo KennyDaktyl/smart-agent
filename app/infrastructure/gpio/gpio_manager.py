@@ -4,6 +4,8 @@ from typing import Dict, List, Optional
 from app.core.config import settings
 from app.core.nats_client import nats_client
 from app.domain.gpio.entities import GPIODevice
+from app.infrastructure.backend.backend_adapter import backend_adapter
+from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.hardware import GPIO
 
@@ -127,6 +129,24 @@ class GPIOManager:
         )
 
         return True
+
+    def force_all_off(self, reason: str = "SAFETY_SHUTDOWN"):
+        """Force all known devices to OFF, update state, persist config, and log event."""
+        for device in self.devices.values():
+            try:
+                ok = gpio_controller.set_state(device.device_id, False)
+                if ok:
+                    self.set_state(device.device_id, False)
+                    gpio_config_storage.update_state(device.device_id, False)
+                    backend_adapter.log_device_event(
+                        device_id=device.device_id,
+                        pin_state=False,
+                        trigger_reason=reason,
+                        power_kw=None,
+                    )
+                    logger.warning(f"Forced OFF device_id={device.device_id} due to {reason}")
+            except Exception:
+                logger.exception(f"Failed to force OFF device_id={device.device_id} due to {reason}")
 
 
 gpio_manager = GPIOManager()
