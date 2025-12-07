@@ -1,21 +1,44 @@
-FROM python:3.11-slim
+FROM --platform=$TARGETPLATFORM python:3.11-slim AS base
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    python3-dev \
-    libgpiod-dev \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+ARG TARGETARCH
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN apt-get update && \
+    if [ "$TARGETARCH" = "arm" ] || [ "$TARGETARCH" = "arm64" ]; then \
+        if apt-get install -y --no-install-recommends libgpiod2 python3-rpi.gpio; then \
+            echo "Installed Raspberry Pi GPIO packages for $TARGETARCH"; \
+        else \
+            echo "GPIO apt packages not available for $TARGETARCH, continuing without them"; \
+        fi; \
+    else \
+        echo "Skipping Raspberry Pi GPIO packages for $TARGETARCH"; \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
+
+FROM base AS deps
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+FROM base AS prod
+
+COPY --from=deps /usr/local/lib/python3.11 /usr/local/lib/python3.11
+COPY --from=deps /usr/local/bin /usr/local/bin
 
 COPY . .
+
+CMD ["python", "-u", "app/main.py"]
+
+FROM base AS dev
+
+COPY --from=deps /usr/local/lib/python3.11 /usr/local/lib/python3.11
+COPY --from=deps /usr/local/bin /usr/local/bin
 
 CMD ["python", "-u", "app/main.py"]
