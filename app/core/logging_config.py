@@ -1,27 +1,40 @@
 # app/core/logging_config.py
 import logging
-import os
 import sys
-from logging.handlers import RotatingFileHandler
+from datetime import datetime, timezone
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 
-from .config import settings
+from app.core.config import settings
 
-LOG_DIR = settings.LOG_DIR
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_FILE_PATH = os.path.join(LOG_DIR, "logs.log")
+# Resolve log path relative to the project root to avoid surprises with CWD.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+log_dir = Path(settings.LOG_DIR)
+if not log_dir.is_absolute():
+    log_dir = PROJECT_ROOT / log_dir
+log_dir.mkdir(parents=True, exist_ok=True)
+LOG_FILE_PATH = log_dir / "logs.log"
 
-LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s]  %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
 formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
-file_handler = RotatingFileHandler(
-    LOG_FILE_PATH, maxBytes=10_000_000, backupCount=5, encoding="utf-8"
+# Handlers: console + rotating file.
+file_handler = TimedRotatingFileHandler(
+    LOG_FILE_PATH,
+    when="midnight",
+    interval=1,
+    backupCount=7,
+    encoding="utf-8",
+    delay=True,  # create file lazily to avoid issues during import
 )
+file_handler.suffix = "%Y-%m-%d"
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(formatter)
 
 console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(formatter)
 
 root_logger = logging.getLogger()
@@ -37,10 +50,18 @@ for name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
     log = logging.getLogger(name)
     log.handlers = root_logger.handlers
     log.setLevel(logging.INFO)
-    log.propagate = True
+    log.propagate = False
 
-logger = logging.getLogger("app")
+# Export a named logger for convenience imports (e.g., `from app.core.logging_config import logger`).
+# It writes to both console and the rotating log file.
+logger = logging.getLogger("smart_energy_agent")
 logger.setLevel(logging.INFO)
-logger.propagate = True
+logger.handlers = []
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+logger.propagate = False
 
-logger.info(f"Logging initialized. Writing logs to: {LOG_FILE_PATH}")
+root_logger.info(f"✅ Logging initialized. Writing logs to: {LOG_FILE_PATH}")
+root_logger.info(f"logging start time UTC: {datetime.now(timezone.utc).isoformat()}")
+
+__all__ = ["logging", "logger"]

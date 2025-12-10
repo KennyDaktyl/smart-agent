@@ -8,7 +8,7 @@ from app.core.nats_client import nats_client
 from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent, DeviceDeletedEvent,
                                              DeviceUpdatedEvent, EventType, PowerReadingEvent)
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 async def nats_event_handler(msg):
@@ -16,7 +16,7 @@ async def nats_event_handler(msg):
         raw = json.loads(msg.data.decode())
         event_type = raw.get("event_type")
 
-        logger.info(f"Received raw event: {raw}")
+        logging.info(f"Received raw event: {raw}")
 
         match event_type:
             case EventType.DEVICE_CREATED:
@@ -35,7 +35,7 @@ async def nats_event_handler(msg):
                 event = DeviceCommandEvent(**raw)
 
             case _:
-                logger.error(f"Unknown event type: {event_type}")
+                logging.error(f"Unknown event type: {event_type}")
                 return
 
         ok = False
@@ -43,11 +43,11 @@ async def nats_event_handler(msg):
             result = await event_service.handle_event(event)
             ok = bool(result) or result is None  # treat None as success for backward compatibility
         except Exception:
-            logger.exception("Error while handling event")
+            logging.exception("Error while handling event")
             ok = False
 
         await msg.ack()
-        logger.info("JetStream ACK sent.")
+        logging.info("JetStream ACK sent.")
 
         # Backend ACK
         ack_subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.events.ack"
@@ -72,7 +72,7 @@ async def nats_event_handler(msg):
         }
 
         await nats_client.publish_raw(ack_subject, ack_payload)
-        logger.info(f"✔ Backend ACK subject={ack_subject} | sent: {ack_payload}")
+        logging.info(f"✔ Backend ACK subject={ack_subject} | sent: {ack_payload}")
 
     except Exception:
-        logger.exception("Unhandled error while processing NATS event")
+        logging.exception("Unhandled error while processing NATS event")

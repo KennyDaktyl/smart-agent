@@ -3,7 +3,7 @@ import logging
 
 from app.infrastructure.storage.config_storage import CONFIG_PATH
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 class ConfigService:

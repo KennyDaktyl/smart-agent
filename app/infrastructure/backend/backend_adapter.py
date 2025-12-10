@@ -9,7 +9,7 @@ import httpx
 
 from app.core.config import settings
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 class BackendAdapter:
@@ -20,7 +20,7 @@ class BackendAdapter:
         try:
             self.queue_path.parent.mkdir(parents=True, exist_ok=True)
         except Exception:
-            logger.warning("BackendAdapter: failed to prepare queue directory.")
+            logging.warning("BackendAdapter: failed to prepare queue directory.")
 
     def is_enabled(self) -> bool:
         return bool(self.base_url)
@@ -29,9 +29,9 @@ class BackendAdapter:
         try:
             with open(self.queue_path, "a") as f:
                 f.write(json.dumps(payload) + "\n")
-            logger.warning(f"BackendAdapter: queued event (offline): {payload}")
+            logging.warning(f"BackendAdapter: queued event (offline): {payload}")
         except Exception as exc:
-            logger.error(f"BackendAdapter: failed to enqueue offline event: {exc}")
+            logging.error(f"BackendAdapter: failed to enqueue offline event: {exc}")
 
     def _flush_queue(self):
         if not self.queue_path.exists():
@@ -41,7 +41,7 @@ class BackendAdapter:
             with open(self.queue_path, "r") as f:
                 lines = f.readlines()
         except Exception as exc:
-            logger.error(f"BackendAdapter: failed to read offline queue: {exc}")
+            logging.error(f"BackendAdapter: failed to read offline queue: {exc}")
             return
 
         remaining = []
@@ -50,17 +50,17 @@ class BackendAdapter:
                 payload = json.loads(line)
                 resp = httpx.post(f"{self.base_url}/device-events/", json=payload, timeout=5.0)
                 resp.raise_for_status()
-                logger.info(f"BackendAdapter: flushed queued event {payload}")
+                logging.info(f"BackendAdapter: flushed queued event {payload}")
             except Exception as exc:
                 remaining.append(line)
-                logger.warning(f"BackendAdapter: failed to flush queued event, will keep queued. Error: {exc}")
+                logging.warning(f"BackendAdapter: failed to flush queued event, will keep queued. Error: {exc}")
 
         if remaining:
             try:
                 with open(self.queue_path, "w") as f:
                     f.writelines(remaining)
             except Exception as exc:
-                logger.error(f"BackendAdapter: failed to rewrite offline queue: {exc}")
+                logging.error(f"BackendAdapter: failed to rewrite offline queue: {exc}")
         else:
             try:
                 self.queue_path.unlink(missing_ok=True)
@@ -70,7 +70,7 @@ class BackendAdapter:
     def log_device_event(self, device_id: int, pin_state: bool, trigger_reason: str, power_kw: Optional[float] = None):
         """Send device state change to backend; non-blocking for agent stability."""
         if not self.is_enabled():
-            logger.debug("BackendAdapter disabled (BACKEND_URL not set). Skipping device event.")
+            logging.debug("BackendAdapter disabled (BACKEND_URL not set). Skipping device event.")
             return
 
         url = f"{self.base_url}/device-events/"
@@ -87,12 +87,12 @@ class BackendAdapter:
             self._flush_queue()
             resp = httpx.post(url, json=payload, timeout=5.0)
             resp.raise_for_status()
-            logger.info(f"BackendAdapter: sent device event {payload}")
+            logging.info(f"BackendAdapter: sent device event {payload}")
         except httpx.HTTPStatusError as exc:
-            logger.error(f"BackendAdapter: backend responded with error: {exc.response.status_code} {exc.response.text}")
+            logging.error(f"BackendAdapter: backend responded with error: {exc.response.status_code} {exc.response.text}")
             self._enqueue(payload)
         except httpx.RequestError as exc:
-            logger.error(f"BackendAdapter: request error while sending device event: {exc}")
+            logging.error(f"BackendAdapter: request error while sending device event: {exc}")
             self._enqueue(payload)
 
 

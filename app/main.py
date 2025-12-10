@@ -5,6 +5,10 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+# Initialize logging early so subsequent imports inherit the handlers.
+from app.core.logging_config import logging, logger
+
 import inspect
 from app.core.config import settings
 from app.core.gpio_monitor import monitor_gpio_changes
@@ -16,16 +20,14 @@ from app.infrastructure.gpio.gpio_manager import gpio_manager
 from app.interfaces.handlers.nats_event_handler import nats_event_handler
 from app.interfaces.handlers.power_reading_handler import inverter_production_handler
 
-from app.core.logging_config import logger
-
 
 async def main():
 
     try:
         await nats_client.connect()
         
-        logger.warning("=== LOADED CODE FOR get_devices_status() ===")
-        logger.warning(inspect.getsource(gpio_manager.get_devices_status))
+        logging.warning("=== LOADED CODE FOR get_devices_status() ===")
+        logging.warning(inspect.getsource(gpio_manager.get_devices_status))
 
         devices = gpio_config_storage.load()
         
@@ -41,11 +43,11 @@ async def main():
 
         subject = f"device_communication.inverter.{inverter_serial}.production.update"
         await nats_client.subscribe(subject, inverter_production_handler)
-        logger.info(f"Subscribed to inverter power updates: {subject}")
+        logging.info(f"Subscribed to inverter power updates: {subject}")
         
         subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.events"
         await nats_client.subscribe_js(subject, nats_event_handler)
-        logger.info(f"Subscribed to Raspberry events. Subject: {subject}")
+        logging.info(f"Subscribed to Raspberry events. Subject: {subject}")
 
         asyncio.create_task(send_heartbeat())
 

@@ -11,6 +11,7 @@ services:
 
     volumes:
       - ./config.json:/app/config.json:rw
+      - ./logs:/app/logs:rw
 
     env_file:
       - .env

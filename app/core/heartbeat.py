@@ -8,7 +8,7 @@ from app.core.nats_client import nats_client
 from app.domain.events.enums import EventType
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 async def send_heartbeat() -> None:
@@ -41,15 +41,15 @@ async def send_heartbeat() -> None:
             # JETSTREAM — PUBLISH
             await nats_client.js_publish(subject, message)
 
-            logger.info(
+            logging.info(
                 f"[HEARTBEAT] subject={subject} | payload: {message}"
             )
             safety_shutdown_triggered = False
 
         except Exception as e:
-            logger.exception(f"Heartbeat error: {e}")
+            logging.exception(f"Heartbeat error: {e}")
             if not safety_shutdown_triggered:
-                logger.warning("Heartbeat failed; triggering safety shutdown (all devices OFF).")
+                logging.warning("Heartbeat failed; triggering safety shutdown (all devices OFF).")
                 gpio_manager.force_all_off(reason="HEARTBEAT_FAILURE")
                 safety_shutdown_triggered = True
 

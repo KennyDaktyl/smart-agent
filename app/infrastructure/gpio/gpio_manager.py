@@ -9,7 +9,7 @@ from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.hardware import GPIO
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 class GPIOManager:
@@ -29,7 +29,7 @@ class GPIOManager:
         self.devices = {str(d.device_id): d for d in devices}
         self.previous_states = {d.pin_number: None for d in devices}
         self.pin_to_device = {d.pin_number: str(d.device_id) for d in devices}
-        logger.info(f"GPIOManager: loaded {len(devices)} devices")
+        logging.info(f"GPIOManager: loaded {len(devices)} devices")
 
     def get_states(self) -> Dict[int, int]:
         states: Dict[int, int] = {}
@@ -82,7 +82,7 @@ class GPIOManager:
                 continue
 
             if new_raw != old_raw:
-                logger.info(
+                logging.info(
                     f"GPIO change on pin {pin}: {old_raw} → {new_raw}"
                 )
                 await self.send_change_event(pin, new_raw)
@@ -93,7 +93,7 @@ class GPIOManager:
         device_id = self.pin_to_device.get(pin)
         device = self.devices.get(device_id) if device_id else None
         if not device:
-            logger.error(f"Cannot send change event: device for pin {pin} not found")
+            logging.error(f"Cannot send change event: device for pin {pin} not found")
             return
 
         payload = {
@@ -105,12 +105,12 @@ class GPIOManager:
         subject = f"raspberry.{settings.RASPBERRY_UUID}.gpio_change"
         await nats_client.publish(subject, payload)
 
-        logger.info(f"Sent gpio_change event: {payload}")
+        logging.info(f"Sent gpio_change event: {payload}")
 
     def set_state(self, device_id: int, is_on: bool) -> bool:
         device = self.get_device(device_id)
         if not device:
-            logger.error(f"GPIOManager: device_id={device_id} not found")
+            logging.error(f"GPIOManager: device_id={device_id} not found")
             return False
 
         device.is_on = is_on
@@ -122,7 +122,7 @@ class GPIOManager:
 
         self.previous_states[device.pin_number] = raw
 
-        logger.info(
+        logging.info(
             f"GPIOManager: logical state updated "
             f"device_id={device_id}, pin={device.pin_number}, "
             f"is_on={is_on}, raw={raw}"
@@ -134,19 +134,27 @@ class GPIOManager:
         """Force all known devices to OFF, update state, persist config, and log event."""
         for device in self.devices.values():
             try:
-                ok = gpio_controller.set_state(device.device_id, False)
-                if ok:
+                is_on = self.get_is_on(device.device_id)
+
+                # Only perform hardware change + log when state actually flips to OFF.
+                if is_on:
+                    ok = gpio_controller.set_state(device.device_id, False)
+                    if ok:
+                        self.set_state(device.device_id, False)
+                        gpio_config_storage.update_state(device.device_id, False)
+                        backend_adapter.log_device_event(
+                            device_id=device.device_id,
+                            pin_state=False,
+                            trigger_reason=reason,
+                            power_kw=None,
+                        )
+                        logging.warning(f"Forced OFF device_id={device.device_id} due to {reason}")
+                else:
+                    # Keep internal/config state in sync without emitting duplicate events.
                     self.set_state(device.device_id, False)
                     gpio_config_storage.update_state(device.device_id, False)
-                    backend_adapter.log_device_event(
-                        device_id=device.device_id,
-                        pin_state=False,
-                        trigger_reason=reason,
-                        power_kw=None,
-                    )
-                    logger.warning(f"Forced OFF device_id={device.device_id} due to {reason}")
             except Exception:
-                logger.exception(f"Failed to force OFF device_id={device.device_id} due to {reason}")
+                logging.exception(f"Failed to force OFF device_id={device.device_id} due to {reason}")
 
 
 gpio_manager = GPIOManager()

@@ -9,7 +9,7 @@ from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 from app.infrastructure.gpio.gpio_pin_mapping import pin_mapping
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 class GPIOService:
@@ -37,7 +37,7 @@ class GPIOService:
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
-        logger.info(
+        logging.info(
             f"GPIOService: created device {payload.device_id} "
             f"(device_number={payload.device_number} → pin={pin_number})"
         )
@@ -56,7 +56,7 @@ class GPIOService:
                 updated = True
 
         if not updated:
-            logger.error(f"GPIOService: cannot update, device_id={payload.device_id} not found")
+            logging.error(f"GPIOService: cannot update, device_id={payload.device_id} not found")
             return False
 
         gpio_config_storage.save(devices)
@@ -64,7 +64,7 @@ class GPIOService:
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
-        logger.info(f"GPIOService: updated device {payload.device_id}")
+        logging.info(f"GPIOService: updated device {payload.device_id}")
         return True
 
     def delete_device(self, payload):
@@ -76,19 +76,19 @@ class GPIOService:
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
-        logger.info(f"GPIOService: deleted device {payload.device_id}")
+        logging.info(f"GPIOService: deleted device {payload.device_id}")
         
     # -----------------------------------------------------
     # Manualne sterowanie przekaźnikiem (DEVICE_COMMAND)
     # -----------------------------------------------------
     def set_manual_state(self, payload):
 
-        logger.info(
+        logging.info(
             f"GPIOService: manual SET_STATE for device_id={payload.device_id}, is_on={payload.is_on}"
         )
 
         if payload.command != "SET_STATE":
-            logger.error(f"GPIOService: unknown command {payload.command}")
+            logging.error(f"GPIOService: unknown command {payload.command}")
             return False
 
         ok = gpio_controller.set_state(payload.device_id, payload.is_on)
@@ -106,7 +106,7 @@ class GPIOService:
             trigger_reason="DEVICE_COMMAND",
         )
 
-        logger.info(
+        logging.info(
             f"GPIOService: device {payload.device_id} manually set to "
             f"{'ON' if payload.is_on else 'OFF'} (GPIO + manager + config)"
         )

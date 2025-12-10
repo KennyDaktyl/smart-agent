@@ -3,7 +3,7 @@ import json
 import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 class PinMapping:
@@ -31,7 +31,7 @@ class PinMapping:
         if "device_pin_map" not in self.mapping:
             raise RuntimeError("gpio_mapping.json must contain 'device_pin_map' section.")
 
-        logger.info(f"Loaded GPIO mapping from {self.path}")
+        logging.info(f"Loaded GPIO mapping from {self.path}")
 
     def get_pin_config(self, device_number: int) -> tuple[int, bool]:
         raw = self.mapping["device_pin_map"].get(str(device_number))

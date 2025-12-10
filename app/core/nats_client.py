@@ -5,7 +5,7 @@ import nats
 
 from app.core.config import settings
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 class NATSClient:
@@ -14,17 +14,17 @@ class NATSClient:
         self.js = None
 
     async def connect(self):
-        logger.info(f"Connecting to NATS: {settings.NATS_URL}")
+        logging.info(f"Connecting to NATS: {settings.NATS_URL}")
         self.nc = await nats.connect(settings.NATS_URL)
         self.js = self.nc.jetstream()
 
-        logger.info("Connected to NATS & JetStream")
+        logging.info("Connected to NATS & JetStream")
 
         try:
             await self.js.stream_info("device_communication")
-            logger.info("Stream device_communication found.")
+            logging.info("Stream device_communication found.")
         except Exception:
-            logger.error("Stream device_communication not found!")
+            logging.error("Stream device_communication not found!")
             raise RuntimeError("JetStream stream 'device_communication' must be created by backend.")
 
     async def ensure_connected(self):
@@ -46,7 +46,7 @@ class NATSClient:
         await self.ensure_connected()
 
         sub = await self.nc.subscribe(subject, cb=handler)
-        logger.info(f"[NATS] Subscribed to subject: {subject}")
+        logging.info(f"[NATS] Subscribed to subject: {subject}")
 
         return sub
     
@@ -60,7 +60,7 @@ class NATSClient:
             return
 
         try:
-            logger.info("Closing NATS connection...")
+            logging.info("Closing NATS connection...")
             await self.nc.drain()
         except Exception:
             pass
@@ -70,7 +70,7 @@ class NATSClient:
         except Exception:
             pass
 
-        logger.info("NATS connection closed.")
+        logging.info("NATS connection closed.")
 
 
 nats_client = NATSClient()

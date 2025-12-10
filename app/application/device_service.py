@@ -11,7 +11,7 @@ from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 from app.infrastructure.gpio.gpio_pin_mapping import pin_mapping
 
-logger = logging.getLogger(__name__)
+logging = logging.getLogger(__name__)
 
 
 class GPIOService:
@@ -39,7 +39,7 @@ class GPIOService:
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
-        logger.info(
+        logging.info(
             f"[CREATE] device_id={payload.device_id} "
             f"(device_number={payload.device_number} → pin={pin_number}) "
             f"mode={payload.mode}, threshold={payload.threshold_kw}"
@@ -61,7 +61,7 @@ class GPIOService:
                 break
 
         if not updated:
-            logger.error(f"[UPDATE] device_id={payload.device_id} NOT FOUND")
+            logging.error(f"[UPDATE] device_id={payload.device_id} NOT FOUND")
             return False
 
         gpio_config_storage.save(devices)
@@ -69,7 +69,7 @@ class GPIOService:
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
-        logger.info(
+        logging.info(
             f"[UPDATE] device_id={payload.device_id} mode={payload.mode} threshold={payload.threshold_kw}"
         )
         return True
@@ -83,7 +83,7 @@ class GPIOService:
         devices = [d for d in devices if d.device_id != payload.device_id]
 
         if len(devices) == before:
-            logger.error(f"[DELETE] device_id={payload.device_id} NOT FOUND")
+            logging.error(f"[DELETE] device_id={payload.device_id} NOT FOUND")
             return False
 
         gpio_config_storage.save(devices)
@@ -91,7 +91,7 @@ class GPIOService:
         gpio_controller.load_from_entities(devices)
         gpio_manager.load_devices(devices)
 
-        logger.info(f"[DELETE] device_id={payload.device_id} removed")
+        logging.info(f"[DELETE] device_id={payload.device_id} removed")
         return True
 
     def set_manual_state(self, payload: DeviceCommandPayload):
@@ -100,7 +100,7 @@ class GPIOService:
         Obsługuje TYLKO DeviceMode.MANUAL
         """
 
-        logger.info(f"[MANUAL] SET_STATE → device_id={payload.device_id}, is_on={payload.is_on}")
+        logging.info(f"[MANUAL] SET_STATE → device_id={payload.device_id}, is_on={payload.is_on}")
 
         devices: List[GPIODevice] = gpio_config_storage.load()
         device: Optional[GPIODevice] = next(
@@ -108,11 +108,11 @@ class GPIOService:
         )
 
         if not device:
-            logger.error(f"[MANUAL] device_id={payload.device_id} NOT FOUND")
+            logging.error(f"[MANUAL] device_id={payload.device_id} NOT FOUND")
             return False
 
         if device.mode != DeviceMode.MANUAL:
-            logger.info(
+            logging.info(
                 f"[MANUAL] IGNORE → device_id={device.device_id} is in mode={device.mode} "
                 f"(only MANUAL can execute SET_STATE)"
             )
@@ -141,12 +141,12 @@ class GPIOService:
         threshold = device.power_threshold_kw
 
         if threshold is None:
-            logger.warning(f"[AUTO] device_id={device.device_id} has no threshold → skipping")
+            logging.warning(f"[AUTO] device_id={device.device_id} has no threshold → skipping")
             return False
 
         should_turn_on = current_power >= threshold
 
-        logger.info(
+        logging.info(
             f"[AUTO] device_id={device.device_id} power={current_power}, "
             f"threshold={threshold} → {'ON' if should_turn_on else 'OFF'}"
         )
