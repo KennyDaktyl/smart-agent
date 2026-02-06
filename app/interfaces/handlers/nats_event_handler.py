@@ -1,10 +1,7 @@
-# app/interfaces/handlers/nats_event_handler.py
 import json
 import logging
 
 from app.application.event_service import event_service
-from app.core.config import settings
-from app.core.nats_client import nats_client
 from app.domain.events.device_events import (
     DeviceCommandEvent,
     DeviceCreatedEvent,
@@ -14,7 +11,7 @@ from app.domain.events.device_events import (
     PowerReadingEvent,
 )
 
-logging = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def nats_event_handler(msg):
@@ -22,8 +19,11 @@ async def nats_event_handler(msg):
         raw = json.loads(msg.data.decode())
         event_type = raw.get("event_type")
 
-        logging.info(f"Received raw event: {raw}")
+        logger.info("Received raw event: %s", raw)
 
+        # -------------------------------------------------
+        # Parse event
+        # -------------------------------------------------
         match event_type:
             case EventType.DEVICE_CREATED:
                 event = DeviceCreatedEvent(**raw)
@@ -34,45 +34,45 @@ async def nats_event_handler(msg):
             case EventType.DEVICE_DELETED:
                 event = DeviceDeletedEvent(**raw)
 
-            case EventType.CURRENT_ENERGY:
-                event = PowerReadingEvent(**raw)
-
             case EventType.DEVICE_COMMAND:
                 event = DeviceCommandEvent(**raw)
 
+            case EventType.CURRENT_ENERGY:
+                event = PowerReadingEvent(**raw)
+
             case _:
-                logging.error(f"Unknown event type: {event_type}")
+                logger.error("Unknown event type: %s", event_type)
+                await msg.ack()
                 return
 
+        # -------------------------------------------------
+        # Execute event
+        # -------------------------------------------------
         ok = False
         try:
             result = await event_service.handle_event(event)
-            ok = (
-                bool(result) or result is None
-            )  # treat None as success for backward compatibility
+            ok = bool(result) or result is None
         except Exception:
-            logging.exception("Error while handling event")
+            logger.exception("Error while handling event")
             ok = False
 
+        # -------------------------------------------------
+        # JetStream ACK (delivery-level)
+        # -------------------------------------------------
         await msg.ack()
-        logging.info("JetStream ACK sent.")
+        logger.info("JetStream ACK sent.")
 
-        # Backend ACK
-        ack_subject = f"device_communication.events.{settings.RASPBERRY_UUID}.ack"
-        payload_dict = event.data.model_dump()
+        # -------------------------------------------------
+        # Extract ACK data (🔥 TO BYŁ BRAKUJĄCY KROK)
+        # -------------------------------------------------
+        payload = event.data.model_dump()
 
-        device_id = payload_dict.get("device_id")
-        manual_state = (
-            payload_dict.get("is_on")
-            if "is_on" in payload_dict
-            else payload_dict.get("manual_state")
-        )
+        device_id = payload.get("device_id")
+        manual_state = payload.get("is_on") or payload.get("manual_state")
 
-        # Format przyjazny backendowi:
-        #  - top-level device_id
-        #  - top-level ok (dla .get("ok"))
-        #  - opcjonalny manual_state (alias is_on)
-        #  - wewnętrzny ack dla zgodności wstecznej
+        # -------------------------------------------------
+        # Backend REPLY (command-level ACK)
+        # -------------------------------------------------
         ack_payload = {
             "device_id": device_id,
             "ok": ok,
@@ -83,8 +83,8 @@ async def nats_event_handler(msg):
             },
         }
 
-        await nats_client.publish_raw(ack_subject, ack_payload)
-        logging.info(f"✔ Backend ACK subject={ack_subject} | sent: {ack_payload}")
+        await msg.respond(json.dumps(ack_payload).encode())
+        logger.info("✔ Backend REPLY sent | %s", ack_payload)
 
     except Exception:
-        logging.exception("Unhandled error while processing NATS event")
+        logger.exception("Unhandled error while processing NATS event")
