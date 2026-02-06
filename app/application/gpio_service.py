@@ -4,7 +4,7 @@ import logging
 from app.domain.events.device_events import DeviceCreatedPayload
 from app.domain.gpio.entities import GPIODevice
 from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
-from app.infrastructure.backend.backend_adapter import backend_adapter
+from app.infrastructure.backend.backend_adapter import backend_adapter, DeviceEventType
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 from app.infrastructure.gpio.gpio_pin_mapping import pin_mapping
@@ -56,7 +56,9 @@ class GPIOService:
                 updated = True
 
         if not updated:
-            logging.error(f"GPIOService: cannot update, device_id={payload.device_id} not found")
+            logging.error(
+                f"GPIOService: cannot update, device_id={payload.device_id} not found"
+            )
             return False
 
         gpio_config_storage.save(devices)
@@ -77,7 +79,7 @@ class GPIOService:
         gpio_manager.load_devices(devices)
 
         logging.info(f"GPIOService: deleted device {payload.device_id}")
-        
+
     # -----------------------------------------------------
     # Manualne sterowanie przekaźnikiem (DEVICE_COMMAND)
     # -----------------------------------------------------
@@ -97,11 +99,12 @@ class GPIOService:
 
         gpio_manager.set_state(payload.device_id, payload.is_on)
 
-        gpio_config_storage.update_state(payload.device_id, payload.is_on)
+        gpio_config_storage.update_state(payload.device_id, payload.is_on, payload.mode)
 
         # Report to backend (fire-and-forget)
         backend_adapter.log_device_event(
             device_id=payload.device_id,
+            event_type=DeviceEventType.STATE,
             pin_state=payload.is_on,
             trigger_reason="DEVICE_COMMAND",
         )
@@ -112,8 +115,6 @@ class GPIOService:
         )
 
         return True
-
-
 
 
 gpio_service = GPIOService()

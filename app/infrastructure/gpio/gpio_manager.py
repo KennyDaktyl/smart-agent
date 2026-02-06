@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from app.core.config import settings
 from app.core.nats_client import nats_client
 from app.domain.gpio.entities import GPIODevice
-from app.infrastructure.backend.backend_adapter import backend_adapter
+from app.infrastructure.backend.backend_adapter import backend_adapter, DeviceEventType
 from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.hardware import GPIO
@@ -53,13 +53,15 @@ class GPIOManager:
                 raw = GPIO.HIGH if d.active_low else GPIO.LOW
             is_on = self.raw_to_is_on(d, raw)
 
-            results.append({
-                "device_id": d.device_id,
-                "pin": d.pin_number,
-                "is_on": is_on,
-                "mode": d.mode,
-                "threshold": d.power_threshold_kw,
-            })
+            results.append(
+                {
+                    "device_id": d.device_id,
+                    "pin": d.pin_number,
+                    "is_on": is_on,
+                    "mode": d.mode,
+                    "threshold": d.power_threshold_kw,
+                }
+            )
 
         return results
 
@@ -82,9 +84,7 @@ class GPIOManager:
                 continue
 
             if new_raw != old_raw:
-                logging.info(
-                    f"GPIO change on pin {pin}: {old_raw} → {new_raw}"
-                )
+                logging.info(f"GPIO change on pin {pin}: {old_raw} → {new_raw}")
                 await self.send_change_event(pin, new_raw)
 
             self.previous_states[pin] = new_raw
@@ -144,17 +144,22 @@ class GPIOManager:
                         gpio_config_storage.update_state(device.device_id, False)
                         backend_adapter.log_device_event(
                             device_id=device.device_id,
+                            event_type=DeviceEventType.ERROR,
                             pin_state=False,
                             trigger_reason=reason,
-                            power_kw=None,
+                            power=None,
                         )
-                        logging.warning(f"Forced OFF device_id={device.device_id} due to {reason}")
+                        logging.warning(
+                            f"Forced OFF device_id={device.device_id} due to {reason}"
+                        )
                 else:
                     # Keep internal/config state in sync without emitting duplicate events.
                     self.set_state(device.device_id, False)
                     gpio_config_storage.update_state(device.device_id, False)
             except Exception:
-                logging.exception(f"Failed to force OFF device_id={device.device_id} due to {reason}")
+                logging.exception(
+                    f"Failed to force OFF device_id={device.device_id} due to {reason}"
+                )
 
 
 gpio_manager = GPIOManager()

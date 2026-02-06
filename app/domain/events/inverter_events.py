@@ -1,19 +1,29 @@
-from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel
-
 from app.domain.events.enums import EventType
 
 
-class InverterProductionPayload(BaseModel):
-    inverter_id: int
-    serial_number: str
-    active_power: Optional[float] = None
-    status: str
-    timestamp: datetime
-    error_message: Optional[str] = None
+# =====================================================
+# BASE EVENT – wspólna koperta
+# =====================================================
 
 
-class InverterProductionEvent(BaseModel):
+class BaseEvent(BaseModel):
     event_type: EventType
-    payload: InverterProductionPayload
+    event_id: str
+    source: str
+    entity_type: str
+    entity_id: str
+    timestamp: str
+    data_version: str
+
+
+class InverterProductionPayload(BaseModel):
+    value: float
+    unit: str
+    measured_at: str
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class InverterProductionEvent(BaseEvent):
+    data: InverterProductionPayload

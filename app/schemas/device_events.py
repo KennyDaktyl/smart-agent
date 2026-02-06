@@ -21,7 +21,7 @@ class DeviceUpdatedEvent(BaseModel):
 
 
 class PowerReadingEvent(BaseModel):
-    event: EventType = EventType.POWER_READING
+    event: EventType = EventType.CURRENT_ENERGY
     inverter_id: int
-    power_w: float
+    value: float
     device_ids: list[int]

@@ -8,15 +8,15 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
 
-    RASPBERRY_UUID: str = Field(..., description="Unique ID Raspberry Pi")
-    SECRET_KEY: str = Field(..., description="Secret key for secure operations")
-
     NATS_URL: str = Field("nats://localhost:4222", env="NATS_URL")
     HEARTBEAT_INTERVAL: int = Field(30, env="HEARTBEAT_INTERVAL")
 
     LOG_DIR: str = Field("logs", env="LOG_DIR")
     CONFIG_FILE: str = Field("config.json", env="CONFIG_FILE")
     BACKEND_URL: str | None = Field(None, env="BACKEND_URL")
+    RASPBERRY_UUID: str = Field(env="RASPBERRY_UUID")
+
+    BACKEND_AGENT_TOKEN: str | None
 
     class Config:
         env_file = ".env"

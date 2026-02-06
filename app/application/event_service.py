@@ -4,8 +4,14 @@ from typing import Union
 
 from app.application.auto_power_service import auto_power_service
 from app.application.gpio_service import gpio_service
-from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent, DeviceDeletedEvent,
-                                             DeviceUpdatedEvent, EventType, PowerReadingEvent)
+from app.domain.events.device_events import (
+    DeviceCommandEvent,
+    DeviceCreatedEvent,
+    DeviceDeletedEvent,
+    DeviceUpdatedEvent,
+    EventType,
+    PowerReadingEvent,
+)
 
 logging = logging.getLogger(__name__)
 
@@ -33,8 +39,8 @@ class EventService:
 
             case EventType.DEVICE_DELETED:
                 return await self._handle_device_deleted(event)
-            
-            case EventType.POWER_READING:
+
+            case EventType.CURRENT_ENERGY:
                 return await self._handle_power_reading(event)
 
             case EventType.DEVICE_COMMAND:
@@ -45,28 +51,28 @@ class EventService:
                 return None
 
     async def _handle_device_created(self, event: DeviceCreatedEvent):
-        logging.info(f"Creating device -> {event.payload}")
-        gpio_service.create_device(event.payload)
+        logging.info(f"Creating device -> {event.data}")
+        gpio_service.create_device(event.data)
         return True
 
     async def _handle_device_updated(self, event: DeviceUpdatedEvent):
-        logging.info(f"Updating device -> {event.payload}")
-        gpio_service.update_device(event.payload)
+        logging.info(f"Updating device -> {event.data}")
+        gpio_service.update_device(event.data)
         return True
 
     async def _handle_device_deleted(self, event: DeviceDeletedEvent):
-        logging.info(f"Deleting device -> {event.payload}")
-        gpio_service.delete_device(event.payload)
+        logging.info(f"Deleting device -> {event.data}")
+        gpio_service.delete_device(event.data)
         return True
-    
+
     async def _handle_power_reading(self, event: PowerReadingEvent):
-        logging.info(f"Handling power reading -> {event.payload}")
-        await auto_power_service.handle_power_reading(event.payload)
+        logging.info(f"Handling power reading -> {event.data}")
+        await auto_power_service.handle_power_reading(event.data)
         return True
 
     async def _handle_device_command(self, event: DeviceCommandEvent):
-        logging.info(f"Executing device command -> {event.payload}")
-        gpio_service.set_manual_state(event.payload)
+        logging.info(f"Executing device command -> {event.data}")
+        gpio_service.set_manual_state(event.data)
         return True
 
 

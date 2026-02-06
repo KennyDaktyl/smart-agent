@@ -5,8 +5,14 @@ import logging
 from app.application.event_service import event_service
 from app.core.config import settings
 from app.core.nats_client import nats_client
-from app.domain.events.device_events import (DeviceCommandEvent, DeviceCreatedEvent, DeviceDeletedEvent,
-                                             DeviceUpdatedEvent, EventType, PowerReadingEvent)
+from app.domain.events.device_events import (
+    DeviceCommandEvent,
+    DeviceCreatedEvent,
+    DeviceDeletedEvent,
+    DeviceUpdatedEvent,
+    EventType,
+    PowerReadingEvent,
+)
 
 logging = logging.getLogger(__name__)
 
@@ -24,11 +30,11 @@ async def nats_event_handler(msg):
 
             case EventType.DEVICE_UPDATED:
                 event = DeviceUpdatedEvent(**raw)
-                
+
             case EventType.DEVICE_DELETED:
                 event = DeviceDeletedEvent(**raw)
-                
-            case EventType.POWER_READING:
+
+            case EventType.CURRENT_ENERGY:
                 event = PowerReadingEvent(**raw)
 
             case EventType.DEVICE_COMMAND:
@@ -41,7 +47,9 @@ async def nats_event_handler(msg):
         ok = False
         try:
             result = await event_service.handle_event(event)
-            ok = bool(result) or result is None  # treat None as success for backward compatibility
+            ok = (
+                bool(result) or result is None
+            )  # treat None as success for backward compatibility
         except Exception:
             logging.exception("Error while handling event")
             ok = False
@@ -50,11 +58,15 @@ async def nats_event_handler(msg):
         logging.info("JetStream ACK sent.")
 
         # Backend ACK
-        ack_subject = f"device_communication.raspberry.{settings.RASPBERRY_UUID}.events.ack"
-        payload_dict = event.payload.model_dump()
+        ack_subject = f"device_communication.events.{settings.RASPBERRY_UUID}.ack"
+        payload_dict = event.data.model_dump()
 
         device_id = payload_dict.get("device_id")
-        manual_state = payload_dict.get("is_on") if "is_on" in payload_dict else payload_dict.get("manual_state")
+        manual_state = (
+            payload_dict.get("is_on")
+            if "is_on" in payload_dict
+            else payload_dict.get("manual_state")
+        )
 
         # Format przyjazny backendowi:
         #  - top-level device_id

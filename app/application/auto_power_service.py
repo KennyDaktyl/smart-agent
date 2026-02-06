@@ -12,14 +12,19 @@ logging = logging.getLogger(__name__)
 class AutoPowerService:
 
     async def handle_power_reading(self, event: PowerReadingEvent):
-        power = event.power_w
+        power = event.data.value
 
         devices = gpio_config_storage.load()
 
         if power is None:
-            logging.warning("Power reading missing. Turning all AUTO_POWER devices OFF for safety.")
+            logging.warning(
+                "Power reading missing. Turning all AUTO_POWER devices OFF for safety."
+            )
             for d in devices:
-                if d.device_id in event.device_ids and d.mode == DeviceMode.AUTO_POWER.value:
+                if (
+                    d.device_id in event.device_ids
+                    and d.mode == DeviceMode.AUTO_POWER.value
+                ):
                     ok = gpio_controller.set_state(d.device_id, False)
                     if ok:
                         gpio_manager.set_state(d.device_id, False)

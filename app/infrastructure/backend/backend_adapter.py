@@ -2,6 +2,7 @@
 import json
 import logging
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +11,40 @@ import httpx
 from app.core.config import settings
 
 logging = logging.getLogger(__name__)
+
+
+class DeviceEventType(str, Enum):
+    STATE = "STATE"  # zmiana stanu ON/OFF
+    MODE = "MODE"  # zmiana trybu MANUAL/AUTO
+    HEARTBEAT = "HEARTBEAT"  # heartbeat ok / failed
+    AUTO_TRIGGER = "AUTO_TRIGGER"
+    SCHEDULER = "SCHEDULER"
+    ERROR = "ERROR"
+
+
+class DeviceEventName(str, Enum):
+    # --- STATE ---
+    DEVICE_ON = "DEVICE_ON"
+    DEVICE_OFF = "DEVICE_OFF"
+    SNAPSHOT = "SNAPSHOT"
+
+    # --- MODE ---
+    MANUAL_MODE_ON = "MANUAL_MODE_ON"
+    AUTO_MODE_ON = "AUTO_MODE_ON"
+
+    # --- AUTO ---
+    AUTO_TRIGGER_ON = "AUTO_TRIGGER_ON"
+    AUTO_TRIGGER_OFF = "AUTO_TRIGGER_OFF"
+    AUTO_SKIPPED_NO_SCHEDULE = "AUTO_SKIPPED_NO_SCHEDULE"
+    AUTO_SKIPPED_DISABLED = "AUTO_SKIPPED_DISABLED"
+
+    # --- HEARTBEAT ---
+    HEARTBEAT_OK = "HEARTBEAT_OK"
+    HEARTBEAT_FAILED = "HEARTBEAT_FAILED"
+
+    # --- ERROR ---
+    PROVIDER_ERROR = "PROVIDER_ERROR"
+    DEVICE_ERROR = "DEVICE_ERROR"
 
 
 class BackendAdapter:
@@ -24,6 +59,18 @@ class BackendAdapter:
 
     def is_enabled(self) -> bool:
         return bool(self.base_url)
+
+    def _headers(self) -> dict:
+        """
+        Authorization headers for machine-to-machine auth.
+        """
+        if not settings.BACKEND_AGENT_TOKEN:
+            return {}
+
+        return {
+            "Authorization": f"Bearer {settings.BACKEND_AGENT_TOKEN}",
+            "Content-Type": "application/json",
+        }
 
     def _enqueue(self, payload: dict):
         try:
@@ -48,12 +95,19 @@ class BackendAdapter:
         for line in lines:
             try:
                 payload = json.loads(line)
-                resp = httpx.post(f"{self.base_url}/device-events/", json=payload, timeout=5.0)
+                resp = httpx.post(
+                    f"{self.base_url}/device-events/agent",
+                    json=payload,
+                    headers=self._headers(),
+                    timeout=5.0,
+                )
                 resp.raise_for_status()
                 logging.info(f"BackendAdapter: flushed queued event {payload}")
             except Exception as exc:
                 remaining.append(line)
-                logging.warning(f"BackendAdapter: failed to flush queued event, will keep queued. Error: {exc}")
+                logging.warning(
+                    f"BackendAdapter: failed to flush queued event, will keep queued. Error: {exc}"
+                )
 
         if remaining:
             try:
@@ -67,32 +121,52 @@ class BackendAdapter:
             except Exception:
                 pass
 
-    def log_device_event(self, device_id: int, pin_state: bool, trigger_reason: str, power_kw: Optional[float] = None):
-        """Send device state change to backend; non-blocking for agent stability."""
+    def log_device_event(
+        self,
+        *,
+        device_id: int,
+        event_type: DeviceEventType = DeviceEventType.STATE,
+        pin_state: bool | None,
+        trigger_reason: str,
+        power: float | None = None,
+        source: str = "agent",
+    ):
         if not self.is_enabled():
-            logging.debug("BackendAdapter disabled (BACKEND_URL not set). Skipping device event.")
             return
 
-        url = f"{self.base_url}/device-events/"
+        event_name = (
+            DeviceEventName.DEVICE_ON
+            if pin_state is True
+            else (
+                DeviceEventName.DEVICE_OFF
+                if pin_state is False
+                else DeviceEventName.SNAPSHOT
+            )
+        )
+
         payload = {
             "device_id": device_id,
+            "event_type": event_type.value,
+            "event_name": event_name.value,
+            "device_state": (
+                "ON" if pin_state else "OFF" if pin_state is not None else None
+            ),
             "pin_state": pin_state,
+            "measured_value": power,
+            "measured_unit": "kW" if power is not None else None,
             "trigger_reason": trigger_reason,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": source,
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        if power_kw is not None:
-            payload["power_kw"] = power_kw
 
         try:
             self._flush_queue()
-            resp = httpx.post(url, json=payload, timeout=5.0)
-            resp.raise_for_status()
-            logging.info(f"BackendAdapter: sent device event {payload}")
-        except httpx.HTTPStatusError as exc:
-            logging.error(f"BackendAdapter: backend responded with error: {exc.response.status_code} {exc.response.text}")
-            self._enqueue(payload)
-        except httpx.RequestError as exc:
-            logging.error(f"BackendAdapter: request error while sending device event: {exc}")
+            httpx.post(
+                f"{self.base_url}/device-events",
+                json=payload,
+                timeout=5.0,
+            ).raise_for_status()
+        except Exception:
             self._enqueue(payload)
 
 

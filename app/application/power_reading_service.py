@@ -4,7 +4,7 @@ from typing import List
 from app.domain.device.enums import DeviceMode
 from app.domain.events.inverter_events import InverterProductionEvent
 from app.domain.gpio.entities import GPIODevice
-from app.infrastructure.backend.backend_adapter import backend_adapter
+from app.infrastructure.backend.backend_adapter import backend_adapter, DeviceEventType
 from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 from app.infrastructure.gpio.gpio_controller import gpio_controller
@@ -19,25 +19,28 @@ class PowerReadingService:
         return [
             device
             for device in gpio_manager.devices.values()
-            if device.mode == DeviceMode.AUTO_POWER
+            if device.mode == DeviceMode.AUTO
         ]
 
     async def handle_inverter_power(self, event: InverterProductionEvent) -> None:
-        power = event.payload.active_power
-        logging.info(f"Received inverter power = {power} W")
-        power_kw = power
+        power = event.data.value
+        unit = event.data.unit
+        logging.info(f"Received inverter power = {power} {unit}")
 
         if power is None:
-            logging.warning("Active power missing. Forcing all AUTO_POWER devices OFF for safety.")
+            logging.warning(
+                "Active power missing. Forcing all AUTO_POWER devices OFF for safety."
+            )
             for device in self._get_auto_power_devices():
                 if gpio_controller.set_state(device.device_id, False):
                     gpio_manager.set_state(device.device_id, False)
                     gpio_config_storage.update_state(device.device_id, False)
                     backend_adapter.log_device_event(
                         device_id=device.device_id,
+                        event_type=DeviceEventType.ERROR,
                         pin_state=False,
                         trigger_reason="POWER_MISSING",
-                        power_kw=power_kw,
+                        power=power,
                     )
             return
 
@@ -69,7 +72,9 @@ class PowerReadingService:
 
             raw = pin_states.get(pin)
             if raw is None:
-                logging.warning(f"Pin state missing for device_id={device_id} pin={pin}. Forcing OFF.")
+                logging.warning(
+                    f"Pin state missing for device_id={device_id} pin={pin}. Forcing OFF."
+                )
                 if gpio_controller.set_state(device_id, False):
                     gpio_manager.set_state(device_id, False)
                     gpio_config_storage.update_state(device_id, False)
@@ -83,9 +88,7 @@ class PowerReadingService:
             )
 
             if current_is_on == should_turn_on:
-                logging.info(
-                    f"Device {device_id} already in correct state. Skipping."
-                )
+                logging.info(f"Device {device_id} already in correct state. Skipping.")
                 continue
 
             logging.info(
@@ -99,9 +102,10 @@ class PowerReadingService:
                 gpio_config_storage.update_state(device_id, should_turn_on)
                 backend_adapter.log_device_event(
                     device_id=device_id,
+                    event_type=DeviceEventType.AUTO_TRIGGER,
                     pin_state=should_turn_on,
                     trigger_reason="AUTO_TRIGGER",
-                    power_kw=power_kw,
+                    power=power,
                 )
 
 

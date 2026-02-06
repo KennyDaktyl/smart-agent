@@ -43,7 +43,7 @@ class GPIOConfigStorage:
     def get_inverter_serial(self) -> str | None:
         data = self.load_raw()
         return data.get("inverter_serial")
-    
+
     def save(self, devices: List[GPIODevice]):
 
         raw = self.load_raw()
@@ -72,13 +72,14 @@ class GPIOConfigStorage:
         devices = [d for d in self.load() if d.device_id != device_id]
         self.save(devices)
 
-    def update_state(self, device_id: int, is_on: bool):
+    def update_state(self, device_id: int, is_on: bool, mode: str = None):
         devices = self.load()
 
         for d in devices:
             if d.device_id == device_id:
                 d.is_on = is_on
-
+            if mode:
+                d.mode = mode
         self.save(devices)
 
 

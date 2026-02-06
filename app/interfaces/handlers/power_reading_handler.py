@@ -14,20 +14,21 @@ logging = logging.getLogger(__name__)
 async def inverter_production_handler(msg):
     try:
         raw = json.loads(msg.data.decode())
-
         logging.info(f"Inverter production event received: {raw}")
 
-        try:
-            event = InverterProductionEvent(**raw)
-        except ValidationError as e:
-            logging.error(f"Invalid inverter production event: {raw}")
-            return
+        event = InverterProductionEvent(**raw)
 
-        if event.event_type != EventType.POWER_READING:
-            logging.error(f"Unexpected event_type for inverter event: {event.event_type}")
+        if event.event_type != EventType.CURRENT_ENERGY:
+            logging.warning(f"Ignoring inverter event type={event.event_type}")
             return
 
         await power_reading_service.handle_inverter_power(event)
+
+    except ValidationError as e:
+        logging.error(
+            "Invalid inverter production event schema",
+            exc_info=e,
+        )
 
     except Exception:
         logging.exception("Error handling inverter production update")

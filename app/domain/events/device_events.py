@@ -1,12 +1,16 @@
 from typing import List, Optional
-
 from pydantic import BaseModel
-
 from app.domain.events.enums import EventType
 
 
 class BaseEvent(BaseModel):
     event_type: EventType
+    event_id: str
+    source: str
+    entity_type: str
+    entity_id: str
+    timestamp: str
+    data_version: str
 
 
 class DeviceCreatedPayload(BaseModel):
@@ -17,7 +21,7 @@ class DeviceCreatedPayload(BaseModel):
 
 
 class DeviceCreatedEvent(BaseEvent):
-    payload: DeviceCreatedPayload
+    data: DeviceCreatedPayload
 
 
 class DeviceUpdatedPayload(BaseModel):
@@ -27,15 +31,15 @@ class DeviceUpdatedPayload(BaseModel):
 
 
 class DeviceUpdatedEvent(BaseEvent):
-    payload: DeviceUpdatedPayload
+    data: DeviceUpdatedPayload
 
 
 class DeviceDeletePayload(BaseModel):
     device_id: int
 
-class DeviceDeletedEvent(BaseModel):
-    event_type: str
-    payload: DeviceDeletePayload
+
+class DeviceDeletedEvent(BaseEvent):
+    data: DeviceDeletePayload
 
 
 class PowerReadingPayload(BaseModel):
@@ -45,14 +49,15 @@ class PowerReadingPayload(BaseModel):
 
 
 class PowerReadingEvent(BaseEvent):
-    payload: PowerReadingPayload
+    data: PowerReadingPayload
 
 
 class DeviceCommandPayload(BaseModel):
     device_id: int
+    mode: Optional[str] = None
     command: str
     is_on: bool
 
 
 class DeviceCommandEvent(BaseEvent):
-    payload: DeviceCommandPayload
+    data: DeviceCommandPayload

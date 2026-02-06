@@ -2,10 +2,14 @@ import logging
 from typing import List, Optional
 
 from app.domain.device.enums import DeviceMode
-from app.domain.events.device_events import (DeviceCommandPayload, DeviceCreatedPayload,
-                                             DeviceDeletePayload, DeviceUpdatedPayload)
+from app.domain.events.device_events import (
+    DeviceCommandPayload,
+    DeviceCreatedPayload,
+    DeviceDeletePayload,
+    DeviceUpdatedPayload,
+)
 from app.domain.gpio.entities import GPIODevice
-from app.infrastructure.backend.backend_adapter import backend_adapter
+from app.infrastructure.backend.backend_adapter import backend_adapter, DeviceEventType
 from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
@@ -100,7 +104,9 @@ class GPIOService:
         Obsługuje TYLKO DeviceMode.MANUAL
         """
 
-        logging.info(f"[MANUAL] SET_STATE → device_id={payload.device_id}, is_on={payload.is_on}")
+        logging.info(
+            f"[MANUAL] SET_STATE → device_id={payload.device_id}, is_on={payload.is_on} mode={payload.mode}"
+        )
 
         devices: List[GPIODevice] = gpio_config_storage.load()
         device: Optional[GPIODevice] = next(
@@ -118,12 +124,13 @@ class GPIOService:
             )
             return False
 
-        ok = gpio_controller.set_state(device.device_id, payload.is_on)
+        ok = gpio_controller.set_state(device.device_id, payload.is_on, payload.mode)
         if not ok:
             return False
 
         backend_adapter.log_device_event(
             device_id=device.device_id,
+            event_type=DeviceEventType.STATE,
             pin_state=payload.is_on,
             trigger_reason="DEVICE_COMMAND",
         )
@@ -141,7 +148,9 @@ class GPIOService:
         threshold = device.power_threshold_kw
 
         if threshold is None:
-            logging.warning(f"[AUTO] device_id={device.device_id} has no threshold → skipping")
+            logging.warning(
+                f"[AUTO] device_id={device.device_id} has no threshold → skipping"
+            )
             return False
 
         should_turn_on = current_power >= threshold
