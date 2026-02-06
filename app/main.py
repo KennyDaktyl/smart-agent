@@ -49,7 +49,7 @@ async def main():
 
         microcontroller_uuid = get_microcontroller_uuid()
         subject = f"device_communication.events.{microcontroller_uuid}"
-        await nats_client.subscribe_js(subject, nats_event_handler)
+        await nats_client.subscribe(subject, nats_event_handler)
         logging.info(f"Subscribed to Raspberry events. Subject: {subject}")
 
         asyncio.create_task(send_heartbeat())
