@@ -164,6 +164,7 @@ class BackendAdapter:
             httpx.post(
                 f"{self.base_url}/device-events",
                 json=payload,
+                headers=self._headers(),
                 timeout=5.0,
             ).raise_for_status()
         except Exception:
