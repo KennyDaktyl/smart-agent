@@ -162,8 +162,9 @@ class BackendAdapter:
         try:
             self._flush_queue()
             httpx.post(
-                f"{self.base_url}/device-events",
+                f"{self.base_url}/device-events/agent",
                 json=payload,
+                headers=self._headers(),
                 timeout=5.0,
             ).raise_for_status()
         except Exception:
