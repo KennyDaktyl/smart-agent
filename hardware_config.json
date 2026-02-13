@@ -1,0 +1,8 @@
+{
+  "devices": {
+    "1": {
+      "gpio": 17,
+      "active_low": true
+    }
+  }
+}

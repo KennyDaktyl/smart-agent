@@ -1,78 +1,75 @@
-# app/infrastructure/gpio/gpio_controller.py
 import logging
-
-from app.domain.gpio.entities import GPIODevice
 from app.infrastructure.gpio.hardware import GPIO
 
-logging = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class GPIOController:
+    """
+    Thin hardware abstraction layer over RPi.GPIO.
+    No domain logic. No device_id. No config awareness.
+    """
 
     def __init__(self):
-        self.pin_map: dict[str, int] = {}
-        self.active_low_map: dict[str, bool] = {}
-
         try:
             GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
+            logger.info("GPIO initialized in BCM mode")
         except Exception as e:
-            logging.error(f"GPIO init problem: {e}")
+            logger.exception(f"GPIO initialization failed: {e}")
 
-    def initialize_pins(self):
-        for device_id, pin in self.pin_map.items():
-            GPIO.setup(pin, GPIO.OUT)
-            active_low = self.active_low_map.get(device_id, True)
-            try:
-                # Default every pin to OFF on startup for safety.
-                GPIO.output(pin, GPIO.HIGH if active_low else GPIO.LOW)
-                logging.info(
-                    f"GPIOController: init device {device_id} (pin {pin}) to OFF (active_low={active_low})"
-                )
-            except Exception as e:
-                logging.error(f"GPIOController: Error forcing OFF pin {pin}: {e}")
-
-    def load_from_entities(self, devices: list[GPIODevice]):
-        self.pin_map = {str(device.device_id): device.pin_number for device in devices}
-        self.active_low_map = {
-            str(device.device_id): bool(device.active_low) for device in devices
-        }
-        logging.info(
-            f"GPIOController: loaded pin mapping {self.pin_map} with active_low {self.active_low_map}"
-        )
-
-    def read_pin(self, pin: int) -> int:
+    def initialize_pin(self, gpio: int, active_low: bool) -> None:
+        """
+        Configure GPIO as output and set safe OFF state.
+        """
         try:
-            return GPIO.input(pin)
-        except Exception as e:
-            logging.exception(f"GPIO read error on pin {pin}")
-            return GPIO.HIGH
+            GPIO.setup(gpio, GPIO.OUT)
 
-    def direct_pin_control(self, gpio_pin: int, is_on: bool, active_low: bool) -> bool:
+            # Safe default: OFF
+            value = GPIO.HIGH if active_low else GPIO.LOW
+            GPIO.output(gpio, value)
+
+            logger.info(
+                f"Initialized GPIO {gpio} to OFF (active_low={active_low})"
+            )
+
+        except Exception:
+            logger.exception(f"Failed to initialize GPIO {gpio}")
+
+    def read(self, gpio: int) -> int:
+        """
+        Read raw GPIO value.
+        """
         try:
-            GPIO.setup(gpio_pin, GPIO.OUT)
+            return GPIO.input(gpio)
+        except Exception:
+            logger.exception(f"GPIO read error on pin {gpio}")
+            return GPIO.HIGH  # safe fallback
 
+    def write(self, gpio: int, is_on: bool, active_low: bool) -> None:
+        """
+        Write logical ON/OFF to GPIO considering active_low.
+        """
+        try:
             if active_low:
                 value = GPIO.LOW if is_on else GPIO.HIGH
             else:
                 value = GPIO.HIGH if is_on else GPIO.LOW
 
-            GPIO.output(gpio_pin, value)
-            return True
+            GPIO.output(gpio, value)
 
-        except Exception as e:
-            logging.exception(f"GPIO direct control error on pin {gpio_pin}")
-            return False
+        except Exception:
+            logger.exception(f"GPIO write error on pin {gpio}")
 
-    def set_state(self, device_id: int, is_on: bool, mode: str = None):
-        pin = self.pin_map.get(str(device_id))
-        if pin is None:
-            logging.error(f"No pin mapped for device_id={device_id}")
-            return False
-
-        active_low = self.active_low_map.get(str(device_id), True)
-
-        return self.direct_pin_control(pin, is_on, active_low)
+    def cleanup(self):
+        """
+        Cleanup GPIO (optional, for shutdown).
+        """
+        try:
+            GPIO.cleanup()
+            logger.info("GPIO cleanup completed")
+        except Exception:
+            logger.exception("GPIO cleanup failed")
 
 
 gpio_controller = GPIOController()

@@ -1,165 +1,111 @@
 import logging
 from typing import Dict, List, Optional
 
-from app.core.config import settings
-from app.core.nats_client import nats_client
-from app.domain.gpio.entities import GPIODevice
-from app.infrastructure.backend.backend_adapter import backend_adapter, DeviceEventType
-from app.infrastructure.gpio.gpio_config_storage import gpio_config_storage
+from app.domain.gpio.runtime_device import RuntimeDevice
 from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.hardware import GPIO
 
-logging = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class GPIOManager:
+    """
+    Runtime logic layer.
+    No NATS. No backend. No config persistence.
+    """
 
     def __init__(self):
-        self.devices: Dict[str, GPIODevice] = {}
-        self.previous_states: Dict[int, Optional[int]] = {}
-        self.pin_to_device: Dict[int, str] = {}
+        self.devices_by_number: Dict[int, RuntimeDevice] = {}
 
-    @staticmethod
-    def raw_to_is_on(device: GPIODevice, raw: int) -> bool:
+        self.devices_by_id: Dict[int, RuntimeDevice] = {}
+
+    # =========================
+    # BOOTSTRAP
+    # =========================
+
+    def load_devices(self, devices: List[RuntimeDevice]) -> None:
+        self.devices_by_number = {d.device_number: d for d in devices}
+        self.devices_by_id = {d.device_id: d for d in devices}
+
+        for device in devices:
+            gpio_controller.initialize_pin(device.gpio, device.active_low)
+
+        logger.info(f"GPIOManager loaded {len(devices)} devices")
+
+    # =========================
+    # LOOKUPS
+    # =========================
+
+    def get_by_number(self, device_number: int) -> Optional[RuntimeDevice]:
+        return self.devices_by_number.get(device_number)
+
+
+    # =========================
+    # STATE HELPERS
+    # =========================
+
+    def raw_to_is_on(self, device: RuntimeDevice, raw: int) -> bool:
         if device.active_low:
             return raw == GPIO.LOW
         return raw == GPIO.HIGH
 
-    def load_devices(self, devices: List[GPIODevice]) -> None:
-        self.devices = {str(d.device_id): d for d in devices}
-        self.previous_states = {d.pin_number: None for d in devices}
-        self.pin_to_device = {d.pin_number: str(d.device_id) for d in devices}
-        logging.info(f"GPIOManager: loaded {len(devices)} devices")
+    def read_is_on_by_number(self, device_number: int) -> bool:
+        device = self.get_by_number(device_number)
+        if not device:
+            return False
 
-    def get_states(self) -> Dict[int, int]:
-        states: Dict[int, int] = {}
-        for device in self.devices.values():
-            pin = device.pin_number
-            val = gpio_controller.read_pin(pin)
-            states[pin] = val
-        return states
+        raw = gpio_controller.read(device.gpio)
+        return self.raw_to_is_on(device, raw)
 
-    def get_device(self, device_id: int) -> Optional[GPIODevice]:
-        """Return GPIODevice by id or None when missing."""
-        return self.devices.get(str(device_id))
+    # =========================
+    # STATUS
+    # =========================
 
-    def get_devices_status(self):
-        states = self.get_states()
+    def get_devices_status(self) -> List[dict]:
+        result = []
 
-        results = []
-        for d in self.devices.values():
-            raw = states.get(d.pin_number)
-            if raw is None:
-                raw = GPIO.HIGH if d.active_low else GPIO.LOW
-            is_on = self.raw_to_is_on(d, raw)
+        for device in self.devices_by_number.values():
+            raw = gpio_controller.read(device.gpio)
+            is_on = self.raw_to_is_on(device, raw)
 
-            results.append(
+            result.append(
                 {
-                    "device_id": d.device_id,
-                    "pin": d.pin_number,
+                    "device_number": device.device_number,
+                    "device_id": device.device_id,
+                    "gpio": device.gpio,
                     "is_on": is_on,
-                    "mode": d.mode,
-                    "threshold": d.power_threshold_kw,
+                    "mode": device.mode,
                 }
             )
 
-        return results
+        return result
 
-    def get_is_on(self, device_id: int) -> bool:
-        device = self.devices.get(str(device_id))
+    # =========================
+    # CONTROL
+    # =========================
+
+    def set_state_by_number(self, device_number: int, is_on: bool) -> bool:
+        device = self.get_by_number(device_number)
+
         if not device:
+            logger.error(f"Device number {device_number} not found")
             return False
 
-        raw = gpio_controller.read_pin(device.pin_number)
-        return self.raw_to_is_on(device, raw)
+        gpio_controller.write(device.gpio, is_on, device.active_low)
+        device.desired_state = is_on
 
-    async def detect_changes(self) -> None:
-        current = self.get_states()
-
-        for pin, new_raw in current.items():
-            old_raw = self.previous_states.get(pin)
-
-            if old_raw is None:
-                self.previous_states[pin] = new_raw
-                continue
-
-            if new_raw != old_raw:
-                logging.info(f"GPIO change on pin {pin}: {old_raw} → {new_raw}")
-                await self.send_change_event(pin, new_raw)
-
-            self.previous_states[pin] = new_raw
-
-    async def send_change_event(self, pin: int, raw: int) -> None:
-        device_id = self.pin_to_device.get(pin)
-        device = self.devices.get(device_id) if device_id else None
-        if not device:
-            logging.error(f"Cannot send change event: device for pin {pin} not found")
-            return
-
-        payload = {
-            "uuid": settings.RASPBERRY_UUID,
-            "pin": pin,
-            "state": self.raw_to_is_on(device, raw),
-        }
-
-        subject = f"raspberry.{settings.RASPBERRY_UUID}.gpio_change"
-        await nats_client.publish(subject, payload)
-
-        logging.info(f"Sent gpio_change event: {payload}")
-
-    def set_state(self, device_id: int, is_on: bool) -> bool:
-        device = self.get_device(device_id)
-        if not device:
-            logging.error(f"GPIOManager: device_id={device_id} not found")
-            return False
-
-        device.is_on = is_on
-
-        if device.active_low:
-            raw = GPIO.LOW if is_on else GPIO.HIGH
-        else:
-            raw = GPIO.HIGH if is_on else GPIO.LOW
-
-        self.previous_states[device.pin_number] = raw
-
-        logging.info(
-            f"GPIOManager: logical state updated "
-            f"device_id={device_id}, pin={device.pin_number}, "
-            f"is_on={is_on}, raw={raw}"
+        logger.info(
+            f"Device number {device_number} set to {'ON' if is_on else 'OFF'}"
         )
 
         return True
 
-    def force_all_off(self, reason: str = "SAFETY_SHUTDOWN"):
-        """Force all known devices to OFF, update state, persist config, and log event."""
-        for device in self.devices.values():
-            try:
-                is_on = self.get_is_on(device.device_id)
+    def force_all_off(self, reason: str = "SAFETY") -> None:
+        logger.warning(f"Forcing all devices OFF due to {reason}")
 
-                # Only perform hardware change + log when state actually flips to OFF.
-                if is_on:
-                    ok = gpio_controller.set_state(device.device_id, False)
-                    if ok:
-                        self.set_state(device.device_id, False)
-                        gpio_config_storage.update_state(device.device_id, False)
-                        backend_adapter.log_device_event(
-                            device_id=device.device_id,
-                            event_type=DeviceEventType.ERROR,
-                            pin_state=False,
-                            trigger_reason=reason,
-                            power=None,
-                        )
-                        logging.warning(
-                            f"Forced OFF device_id={device.device_id} due to {reason}"
-                        )
-                else:
-                    # Keep internal/config state in sync without emitting duplicate events.
-                    self.set_state(device.device_id, False)
-                    gpio_config_storage.update_state(device.device_id, False)
-            except Exception:
-                logging.exception(
-                    f"Failed to force OFF device_id={device.device_id} due to {reason}"
-                )
+        for device in self.devices_by_number.values():
+            gpio_controller.write(device.gpio, False, device.active_low)
+            device.desired_state = False
 
 
 gpio_manager = GPIOManager()

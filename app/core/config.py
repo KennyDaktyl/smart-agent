@@ -1,22 +1,26 @@
-# app/core/config.py
-import json
 from pathlib import Path
-
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # ===== BASE PATH =====
+    BASE_DIR: Path = Path.cwd()
 
-    NATS_URL: str = Field("nats://localhost:4222", env="NATS_URL")
-    HEARTBEAT_INTERVAL: int = Field(30, env="HEARTBEAT_INTERVAL")
-
+    # ===== LOGGING =====
     LOG_DIR: str = Field("logs", env="LOG_DIR")
-    CONFIG_FILE: str = Field("config.json", env="CONFIG_FILE")
-    BACKEND_URL: str | None = Field(None, env="BACKEND_URL")
-    RASPBERRY_UUID: str = Field(env="RASPBERRY_UUID")
+    LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
 
-    BACKEND_AGENT_TOKEN: str | None
+    # ===== CONFIG FILE =====
+    CONFIG_FILE: str = Field("config.json", env="CONFIG_FILE")
+
+    # ===== AUTH =====
+    BACKEND_URL: str | None = Field(None, env="BACKEND_URL")
+    BACKEND_AGENT_TOKEN: str | None = Field(None, env="BACKEND_AGENT_TOKEN")
+
+    # ===== NATS =====
+    NATS_URL: str = Field(..., env="NATS_URL")
+    NATS_PREFIX: str = Field("device_communication", env="NATS_PREFIX")
 
     class Config:
         env_file = ".env"
@@ -25,15 +29,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-
-def load_gpio_config() -> dict:
-    config_file = Path(settings.CONFIG_FILE)
-    if config_file.exists():
-        try:
-            with open(config_file, "r") as f:
-                data = json.load(f)
-                return data.get("gpio_pins", {})
-        except json.JSONDecodeError:
-            print("Failed to decode JSON from config file.")
-    return {}
