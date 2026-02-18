@@ -1,16 +1,19 @@
 {
-  "raspberry_uuid": "beebc09e-f272-4471-8c3e-4e9021775876",
-  "device_max": 1,
   "active_low": false,
-  "pins": [
-    {
+  "heartbeat": {
+    "enabled": true,
+    "interval": 5
+  },
+  "device_max": 2,
+  "devices": {
+    "1": {
       "device_id": 120,
-      "device_number": 1,
-      "pin_number": 17,
       "mode": "MANUAL",
-      "power_threshold_kw": null,
-      "is_on": false
+      "power_threshold": null,
+      "rated_power": null,
+      "desired_state": false
     }
-  ],
-  "inverter_serial": "1000000165855382"
+  },
+  "microcontroller_uuid": "beebc09e-f272-4471-8c3e-4e9021775876",
+  "provider_uuid": "4488463d-7007-4e1a-a700-e50129213f92"
 }

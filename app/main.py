@@ -14,7 +14,6 @@ from app.infrastructure.config.hardware_config_repository import (
     hardware_config_repository,
 )
 
-from app.infrastructure.gpio.gpio_controller import gpio_controller
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 
 from app.interfaces.handlers.nats_event_handler import nats_event_handler
@@ -40,6 +39,9 @@ async def bootstrap_gpio():
 async def setup_nats(domain_config):
     await nats_client.connect()
 
+    # -------------------------------------------------
+    # Provider energy
+    # -------------------------------------------------
     provider_subject = NatsSubjects.provider_event(
         domain_config.provider_uuid,
         "provider_current_energy",
@@ -50,8 +52,11 @@ async def setup_nats(domain_config):
         inverter_production_handler,
     )
 
-    logger.info(f"Subscribed to provider energy: {provider_subject}")
+    logger.info(f"Subscribed: {provider_subject}")
 
+    # -------------------------------------------------
+    # All agent commands (including heartbeat)
+    # -------------------------------------------------
     agent_subject = NatsSubjects.agent_command(
         domain_config.microcontroller_uuid,
         ">",
@@ -62,7 +67,7 @@ async def setup_nats(domain_config):
         nats_event_handler,
     )
 
-    logger.info(f"Subscribed to agent commands: {agent_subject}")
+    logger.info(f"Subscribed: {agent_subject}")
 
 
 async def main():
@@ -72,12 +77,6 @@ async def main():
         domain_config = await bootstrap_gpio()
 
         await setup_nats(domain_config)
-
-        if domain_config.heartbeat.enabled:
-            logger.info("Heartbeat enabled in config → starting.")
-            await heartbeat_service.start()
-
-        logger.info("✅ Agent fully started")
 
         await asyncio.Event().wait()
 

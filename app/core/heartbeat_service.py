@@ -33,7 +33,6 @@ class HeartbeatService:
         self._running = True
         self._task = asyncio.create_task(self._loop())
 
-
     async def stop(self):
         if not self._running:
             return
@@ -51,23 +50,32 @@ class HeartbeatService:
     async def _loop(self):
         safety_shutdown_triggered = False
 
-        subject = NatsSubjects.agent_event(
-            self._micro_uuid,
-            AgentEvents.HEARTBEAT,
+        subject = (
+            f"device_communication.{self._micro_uuid}.event.microcontroller_heartbeat"
         )
 
         while self._running:
             try:
                 devices = gpio_manager.get_devices_status()
 
-                payload = {
-                    "uuid": self._micro_uuid,
-                    "status": "online",
-                    "timestamp": int(datetime.now(timezone.utc).timestamp()),
-                    "devices": devices,
+                event = {
+                    "event_type": "HEARTBEAT",
+                    "subject": subject,
+                    "payload": {
+                        "uuid": self._micro_uuid,
+                        "status": "online",
+                        "timestamp": int(datetime.now(timezone.utc).timestamp()),
+                        "devices": devices,
+                    },
                 }
 
-                await nats_client.js_publish(subject, payload)
+                logger.info(
+                    "💓 Publishing heartbeat | subject=%s payload=%s",
+                    subject,
+                    event,
+                )
+
+                await nats_client.js_publish(subject, event)
 
                 safety_shutdown_triggered = False
 
@@ -75,13 +83,10 @@ class HeartbeatService:
                 logger.exception("Heartbeat error")
 
                 if not safety_shutdown_triggered:
-                    gpio_manager.force_all_off(
-                        reason="HEARTBEAT_FAILURE"
-                    )
+                    gpio_manager.force_all_off(reason="HEARTBEAT_FAILURE")
                     safety_shutdown_triggered = True
 
             await asyncio.sleep(self._interval)
-
 
 
 heartbeat_service = HeartbeatService()

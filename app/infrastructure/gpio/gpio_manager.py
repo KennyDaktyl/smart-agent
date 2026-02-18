@@ -24,6 +24,22 @@ class GPIOManager:
     # =========================
 
     def load_devices(self, devices: List[RuntimeDevice]) -> None:
+        seen_numbers: set[int] = set()
+        seen_ids: set[int] = set()
+
+        for device in devices:
+            if device.device_number in seen_numbers:
+                raise RuntimeError(
+                    f"Duplicate device_number detected: {device.device_number}"
+                )
+            if device.device_id in seen_ids:
+                raise RuntimeError(
+                    f"Duplicate device_id detected: {device.device_id}"
+                )
+
+            seen_numbers.add(device.device_number)
+            seen_ids.add(device.device_id)
+
         self.devices_by_number = {d.device_number: d for d in devices}
         self.devices_by_id = {d.device_id: d for d in devices}
 
@@ -39,6 +55,8 @@ class GPIOManager:
     def get_by_number(self, device_number: int) -> Optional[RuntimeDevice]:
         return self.devices_by_number.get(device_number)
 
+    def get_by_id(self, device_id: int) -> Optional[RuntimeDevice]:
+        return self.devices_by_id.get(device_id)
 
     # =========================
     # STATE HELPERS
@@ -57,6 +75,14 @@ class GPIOManager:
         raw = gpio_controller.read(device.gpio)
         return self.raw_to_is_on(device, raw)
 
+    def read_is_on_by_id(self, device_id: int) -> bool:
+        device = self.get_by_id(device_id)
+        if not device:
+            return False
+
+        raw = gpio_controller.read(device.gpio)
+        return self.raw_to_is_on(device, raw)
+
     # =========================
     # STATUS
     # =========================
@@ -68,13 +94,15 @@ class GPIOManager:
             raw = gpio_controller.read(device.gpio)
             is_on = self.raw_to_is_on(device, raw)
 
+            mode = device.mode.value if hasattr(device.mode, "value") else str(device.mode)
+
             result.append(
                 {
                     "device_number": device.device_number,
                     "device_id": device.device_id,
                     "gpio": device.gpio,
                     "is_on": is_on,
-                    "mode": device.mode,
+                    "mode": mode,
                 }
             )
 
@@ -96,6 +124,22 @@ class GPIOManager:
 
         logger.info(
             f"Device number {device_number} set to {'ON' if is_on else 'OFF'}"
+        )
+
+        return True
+
+    def set_state_by_id(self, device_id: int, is_on: bool) -> bool:
+        device = self.get_by_id(device_id)
+
+        if not device:
+            logger.error(f"Device id {device_id} not found")
+            return False
+
+        gpio_controller.write(device.gpio, is_on, device.active_low)
+        device.desired_state = is_on
+
+        logger.info(
+            f"Device id {device_id} set to {'ON' if is_on else 'OFF'}"
         )
 
         return True

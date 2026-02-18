@@ -1,8 +1,12 @@
 {
   "devices": {
     "1": {
-      "gpio": 17,
-      "active_low": true
+      "gpio": 20,
+      "active_low": false
+    },
+    "2": {
+      "gpio": 21,
+      "active_low": false
     }
   }
 }

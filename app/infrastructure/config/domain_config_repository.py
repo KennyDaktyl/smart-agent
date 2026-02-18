@@ -26,20 +26,15 @@ class DomainConfigRepository:
             return self._config
 
         if not self._config_path.exists():
-            raise FileNotFoundError(
-                f"Domain config not found: {self._config_path}"
-            )
+            raise FileNotFoundError(f"Domain config not found: {self._config_path}")
 
         logger.info(f"Loading domain config: {self._config_path}")
 
         with self._config_path.open("r", encoding="utf-8") as f:
             raw = json.load(f)
 
-        # convert device keys to int
         if "devices" in raw:
-            raw["devices"] = {
-                int(k): v for k, v in raw["devices"].items()
-            }
+            raw["devices"] = {int(k): v for k, v in raw["devices"].items()}
 
         self._config = AgentConfig(**raw)
         return self._config
@@ -52,10 +47,7 @@ class DomainConfigRepository:
 
         data = self._config.model_dump()
 
-        # convert device keys back to str for JSON
-        data["devices"] = {
-            str(k): v for k, v in data["devices"].items()
-        }
+        data["devices"] = {str(k): v for k, v in data["devices"].items()}
 
         with tmp_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
@@ -66,7 +58,8 @@ class DomainConfigRepository:
 
     def update(self, **kwargs) -> AgentConfig:
         config = self.load()
-        self._config = config.model_copy(update=kwargs)
+        updated = config.model_copy(update=kwargs)
+        self._config = AgentConfig.model_validate(updated.model_dump())
         self.save()
         return self._config
 

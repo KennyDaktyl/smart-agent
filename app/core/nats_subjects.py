@@ -33,7 +33,6 @@ class NatsSubjects:
     def provider_event(provider_uuid: str, event: str) -> str:
         return (
             f"{settings.NATS_PREFIX}."
-            f"{NatsScopes.PROVIDER}."
             f"{provider_uuid}."
             f"{NatsChannels.EVENT}."
             f"{event}"
@@ -43,17 +42,15 @@ class NatsSubjects:
     def agent_event(micro_uuid: str, event: str) -> str:
         return (
             f"{settings.NATS_PREFIX}."
-            f"{NatsScopes.AGENT}."
             f"{micro_uuid}."
             f"{NatsChannels.EVENT}."
-            f"{event}"
+            f"microcontroller_{event}"
         )
 
     @staticmethod
     def agent_command(micro_uuid: str, command: str) -> str:
         return (
             f"{settings.NATS_PREFIX}."
-            f"{NatsScopes.AGENT}."
             f"{micro_uuid}."
             f"{NatsChannels.COMMAND}."
             f"{command}"

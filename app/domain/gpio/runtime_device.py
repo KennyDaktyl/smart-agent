@@ -1,4 +1,7 @@
 from dataclasses import dataclass
+from typing import Optional
+
+from app.domain.models.agent_config import DeviceMode
 
 
 @dataclass
@@ -7,7 +10,7 @@ class RuntimeDevice:
     device_id: int
     gpio: int
     active_low: bool
-    mode: str
-    rated_power: float
-    power_threshold: float | None = None
+    mode: DeviceMode
+    rated_power: Optional[float] = None
+    power_threshold: Optional[float] = None
     desired_state: bool = False

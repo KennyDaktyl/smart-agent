@@ -8,6 +8,5 @@ class HardwareDeviceConfig(BaseModel):
 
 
 class HardwareConfig(BaseModel):
-    config_version: int = 1
-    default_active_low: bool = False
+    config_version: int = 2
     devices: Dict[int, HardwareDeviceConfig]

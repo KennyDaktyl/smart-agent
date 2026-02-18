@@ -1,11 +1,11 @@
 {
-  "config_version": 1,
-
-  "default_active_low": false,
-
   "devices": {
     "1": {
       "gpio": 17,
+      "active_low": false
+    },
+    "2": {
+      "gpio": 18,
       "active_low": false
     }
   }
