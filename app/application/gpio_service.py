@@ -4,6 +4,10 @@ from typing import Optional
 
 from app.application.device_factory import merge_configs
 from app.core.device_event_stream_service import device_event_stream_service
+from app.core.heartbeat_service import (
+    HeartbeatPublishTrigger,
+    heartbeat_service,
+)
 from app.domain.events.device_events import (
     DeviceCommandPayload,
     DeviceCreatedPayload,
@@ -38,11 +42,15 @@ class GPIOService:
     @staticmethod
     def _emit_backend_state_change_event(
         *,
+        device_uuid: str | None,
+        device_id: int | None,
         device_number: int,
         is_on: bool,
         trigger_reason: DeviceTriggerReason,
     ) -> None:
         backend_adapter.log_device_event(
+            device_uuid=device_uuid,
+            device_id=device_id,
             device_number=device_number,
             event_type=DeviceEventType.STATE,
             is_on=is_on,
@@ -71,6 +79,31 @@ class GPIOService:
             )
         )
 
+    @staticmethod
+    def _publish_heartbeat_after_state_change_async(
+        *,
+        device_number: int,
+        trigger_reason: DeviceTriggerReason,
+    ) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+        async def _publish() -> None:
+            published = await heartbeat_service.publish_now(
+                trigger=HeartbeatPublishTrigger.STATE_CHANGE,
+            )
+            if not published:
+                logger.warning(
+                    "Immediate heartbeat publish failed after state change "
+                    "| device_number=%s trigger_reason=%s",
+                    device_number,
+                    trigger_reason.value,
+                )
+
+        loop.create_task(_publish())
+
     def _emit_state_changes_after_reload(
         self,
         *,
@@ -87,6 +120,8 @@ class GPIOService:
                 continue
 
             self._emit_backend_state_change_event(
+                device_uuid=device.device_uuid,
+                device_id=device.device_id,
                 device_number=device_number,
                 is_on=current_state,
                 trigger_reason=DeviceTriggerReason.CONFIG_APPLY,
@@ -95,6 +130,10 @@ class GPIOService:
                 device=device,
                 is_on=current_state,
                 event_type=DeviceEventType.STATE,
+                trigger_reason=DeviceTriggerReason.CONFIG_APPLY,
+            )
+            self._publish_heartbeat_after_state_change_async(
+                device_number=device_number,
                 trigger_reason=DeviceTriggerReason.CONFIG_APPLY,
             )
 
@@ -345,6 +384,8 @@ class GPIOService:
         device.desired_state = actual_state
 
         backend_adapter.log_device_event(
+            device_uuid=device.device_uuid,
+            device_id=device.device_id,
             device_number=device.device_number,
             event_type=DeviceEventType.STATE,
             is_on=actual_state,
@@ -354,6 +395,10 @@ class GPIOService:
             device=device,
             is_on=actual_state,
             event_type=DeviceEventType.STATE,
+            trigger_reason=DeviceTriggerReason.DEVICE_COMMAND,
+        )
+        self._publish_heartbeat_after_state_change_async(
+            device_number=device.device_number,
             trigger_reason=DeviceTriggerReason.DEVICE_COMMAND,
         )
 

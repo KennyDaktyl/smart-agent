@@ -91,7 +91,9 @@ class GPIOManager:
                 {
                     "device_id": device.device_id,
                     "device_number": device.device_number,
-                    "gpio": device.gpio,
+                    # UI should use user-facing device number instead of hardware GPIO pin.
+                    "device_number_display": str(device.device_number),
+                    "device_number_markdown": f"**{device.device_number}**",
                     "is_on": is_on,
                     "mode": mode,
                 }

@@ -14,6 +14,7 @@ from app.infrastructure.gpio.gpio_manager import gpio_manager
 class HeartbeatPublishTrigger(str, Enum):
     INTERVAL = "INTERVAL"
     MANUAL = "MANUAL"
+    STATE_CHANGE = "STATE_CHANGE"
 
 
 class HeartbeatFailureReason(str, Enum):

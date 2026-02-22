@@ -3,6 +3,10 @@ from typing import List, Optional
 
 from app.application.gpio_service import gpio_service
 from app.core.device_event_stream_service import device_event_stream_service
+from app.core.heartbeat_service import (
+    HeartbeatPublishTrigger,
+    heartbeat_service,
+)
 from app.domain.gpio.runtime_device import RuntimeDevice
 from app.domain.models.agent_config import DeviceMode
 from app.infrastructure.backend.backend_adapter import (
@@ -39,6 +43,8 @@ class PowerReadingService:
         power_value: Optional[float],
     ) -> None:
         backend_adapter.log_device_event(
+            device_uuid=device.device_uuid,
+            device_id=device.device_id,
             device_number=device.device_number,
             event_type=event_type,
             is_on=is_on,
@@ -89,6 +95,23 @@ class PowerReadingService:
             logging.warning(
                 "Immediate device event publish failed for device_number=%s",
                 device.device_number,
+            )
+
+    async def _publish_heartbeat_after_state_change(
+        self,
+        *,
+        device: RuntimeDevice,
+        trigger_reason: DeviceTriggerReason,
+    ) -> None:
+        published = await heartbeat_service.publish_now(
+            trigger=HeartbeatPublishTrigger.STATE_CHANGE,
+        )
+        if not published:
+            logging.warning(
+                "Immediate heartbeat publish failed after state change "
+                "| device_number=%s trigger_reason=%s",
+                device.device_number,
+                trigger_reason.value,
             )
 
     async def handle_power(
@@ -146,6 +169,10 @@ class PowerReadingService:
                     event_type=DeviceEventType.ERROR,
                     trigger_reason=DeviceTriggerReason.POWER_MISSING,
                     power_value=power_value,
+                )
+                await self._publish_heartbeat_after_state_change(
+                    device=device,
+                    trigger_reason=DeviceTriggerReason.POWER_MISSING,
                 )
             return
 
@@ -210,6 +237,10 @@ class PowerReadingService:
                 event_type=DeviceEventType.AUTO_TRIGGER,
                 trigger_reason=DeviceTriggerReason.AUTO_TRIGGER,
                 power_value=power_value,
+            )
+            await self._publish_heartbeat_after_state_change(
+                device=device,
+                trigger_reason=DeviceTriggerReason.AUTO_TRIGGER,
             )
 
 

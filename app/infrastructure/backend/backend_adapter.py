@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -78,8 +79,11 @@ class BackendAdapter:
     def is_enabled(self) -> bool:
         return bool(self.base_url)
 
-    def _events_url(self) -> str:
-        # Use a single authoritative endpoint for both live sends and queue flush.
+    def _events_url(self, device_uuid: str | None = None) -> str:
+        normalized_uuid = (device_uuid or "").strip()
+        if normalized_uuid:
+            encoded_uuid = quote(normalized_uuid, safe="")
+            return f"{self.base_url}/device-events/agent/{encoded_uuid}"
         return f"{self.base_url}/device-events/agent"
 
     def _headers(self) -> dict:
@@ -102,6 +106,52 @@ class BackendAdapter:
         except Exception as exc:
             logging.error(f"BackendAdapter: failed to enqueue offline event: {exc}")
 
+    @staticmethod
+    def _http_error_details(exc: httpx.HTTPStatusError) -> str:
+        try:
+            body = exc.response.text.strip()
+        except Exception:
+            body = ""
+
+        if body:
+            return (
+                f"status={exc.response.status_code} url={exc.request.url} "
+                f"body={body}"
+            )
+        return str(exc)
+
+    def _prepare_request(self, payload: dict) -> tuple[str, dict]:
+        raw_device_uuid = payload.get("device_uuid")
+        device_uuid = (
+            raw_device_uuid.strip()
+            if isinstance(raw_device_uuid, str) and raw_device_uuid.strip()
+            else None
+        )
+
+        if device_uuid:
+            request_payload = {
+                key: value
+                for key, value in payload.items()
+                if key not in {"device_uuid", "device_id", "device_number"}
+            }
+            return self._events_url(device_uuid), request_payload
+
+        request_payload = {
+            key: value for key, value in payload.items() if key != "device_uuid"
+        }
+        if request_payload.get("device_id") is not None:
+            request_payload.pop("device_number", None)
+        return self._events_url(), request_payload
+
+    def _post_payload(self, payload: dict) -> httpx.Response:
+        url, request_payload = self._prepare_request(payload)
+        return httpx.post(
+            url,
+            json=request_payload,
+            headers=self._headers(),
+            timeout=5.0,
+        )
+
     def _flush_queue(self):
         if not self.queue_path.exists():
             return
@@ -117,14 +167,16 @@ class BackendAdapter:
         for line in lines:
             try:
                 payload = json.loads(line)
-                resp = httpx.post(
-                    self._events_url(),
-                    json=payload,
-                    headers=self._headers(),
-                    timeout=5.0,
-                )
+                resp = self._post_payload(payload)
                 resp.raise_for_status()
                 logging.info(f"BackendAdapter: flushed queued event {payload}")
+            except httpx.HTTPStatusError as exc:
+                remaining.append(line)
+                logging.warning(
+                    "BackendAdapter: failed to flush queued event, "
+                    "will keep queued. Error: %s",
+                    self._http_error_details(exc),
+                )
             except Exception as exc:
                 remaining.append(line)
                 logging.warning(
@@ -146,6 +198,8 @@ class BackendAdapter:
     def log_device_event(
         self,
         *,
+        device_uuid: str | None = None,
+        device_id: int | None = None,
         device_number: int,
         event_type: DeviceEventType = DeviceEventType.STATE,
         is_on: bool | None,
@@ -179,10 +233,13 @@ class BackendAdapter:
         )
 
         payload = {
+            "device_uuid": device_uuid,
+            "device_id": device_id,
             "device_number": device_number,
             "event_type": event_type.value,
             "event_name": event_name.value,
             "device_state": device_state,
+            "pin_state": is_on,
             "is_on": is_on,
             "measured_value": power,
             "measured_unit": "kW" if power is not None else None,
@@ -193,13 +250,19 @@ class BackendAdapter:
 
         try:
             self._flush_queue()
-            httpx.post(
-                self._events_url(),
-                json=payload,
-                headers=self._headers(),
-                timeout=5.0,
-            ).raise_for_status()
-        except Exception:
+            resp = self._post_payload(payload)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logging.warning(
+                "BackendAdapter: immediate send failed. Error: %s",
+                self._http_error_details(exc),
+            )
+            self._enqueue(payload)
+        except Exception as exc:
+            logging.warning(
+                "BackendAdapter: immediate send failed. Error: %s",
+                exc,
+            )
             self._enqueue(payload)
 
 
