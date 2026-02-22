@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 class GPIOController:
     """
     Thin hardware abstraction layer over RPi.GPIO.
-    No domain logic. No device_id. No config awareness.
+    No domain logic. No device identifiers. No config awareness.
     """
 
     def __init__(self):

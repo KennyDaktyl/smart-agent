@@ -1,20 +1,23 @@
 import logging
+import asyncio
+from typing import Optional
 
 from app.application.device_factory import merge_configs
+from app.core.device_event_stream_service import device_event_stream_service
 from app.domain.events.device_events import (
     DeviceCommandPayload,
     DeviceCreatedPayload,
     DeviceDeletePayload,
     DeviceUpdatedPayload,
 )
-from app.domain.models.agent_config import DeviceConfig, DeviceMode
+from app.domain.gpio.runtime_device import RuntimeDevice
+from app.domain.models.agent_config import AgentConfig, DeviceConfig, DeviceMode
 from app.infrastructure.backend.backend_adapter import (
     DeviceEventType,
+    DeviceTriggerReason,
     backend_adapter,
 )
-from app.infrastructure.config.domain_config_repository import (
-    domain_config_repository,
-)
+from app.infrastructure.config.domain_config_repository import domain_config_repository
 from app.infrastructure.config.hardware_config_repository import (
     hardware_config_repository,
 )
@@ -26,34 +29,151 @@ logger = logging.getLogger(__name__)
 class GPIOService:
 
     @staticmethod
+    def _collect_runtime_states() -> dict[int, bool]:
+        return {
+            device_number: gpio_manager.read_is_on_by_number(device_number)
+            for device_number in gpio_manager.devices_by_number.keys()
+        }
+
+    @staticmethod
+    def _emit_backend_state_change_event(
+        *,
+        device_number: int,
+        is_on: bool,
+        trigger_reason: DeviceTriggerReason,
+    ) -> None:
+        backend_adapter.log_device_event(
+            device_number=device_number,
+            event_type=DeviceEventType.STATE,
+            is_on=is_on,
+            trigger_reason=trigger_reason,
+        )
+
+    @staticmethod
+    def _publish_state_change_device_event_async(
+        *,
+        device: RuntimeDevice,
+        is_on: bool,
+        event_type: DeviceEventType,
+        trigger_reason: DeviceTriggerReason,
+    ) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+        loop.create_task(
+            device_event_stream_service.publish_state_change(
+                device=device,
+                is_on=is_on,
+                event_type=event_type,
+                trigger_reason=trigger_reason,
+            )
+        )
+
+    def _emit_state_changes_after_reload(
+        self,
+        *,
+        previous_states: dict[int, bool],
+    ) -> None:
+        for device_number, device in gpio_manager.devices_by_number.items():
+            current_state = gpio_manager.read_is_on_by_number(device_number)
+            previous_state = previous_states.get(device_number)
+
+            if previous_state is None:
+                if not current_state:
+                    continue
+            elif previous_state == current_state:
+                continue
+
+            self._emit_backend_state_change_event(
+                device_number=device_number,
+                is_on=current_state,
+                trigger_reason=DeviceTriggerReason.CONFIG_APPLY,
+            )
+            self._publish_state_change_device_event_async(
+                device=device,
+                is_on=current_state,
+                event_type=DeviceEventType.STATE,
+                trigger_reason=DeviceTriggerReason.CONFIG_APPLY,
+            )
+
+    @staticmethod
     def _to_mode(mode: str | DeviceMode) -> DeviceMode:
         if isinstance(mode, DeviceMode):
             return mode
         return DeviceMode(mode)
 
-    @staticmethod
-    def _mode_value(mode: object) -> str:
-        return mode.value if hasattr(mode, "value") else str(mode)
-
-    @staticmethod
-    def _find_device_number_by_id(device_id: int) -> int | None:
-        domain_config = domain_config_repository.load()
-        for device_number, device in domain_config.devices.items():
-            if device.device_id == device_id:
-                return device_number
-        return None
-
-    @staticmethod
-    def _persist_candidate_config(candidate_config) -> bool:
+    def _persist_candidate_config(self, candidate_config: AgentConfig) -> bool:
+        previous_states = self._collect_runtime_states()
         hardware_config = hardware_config_repository.load()
         merged_devices = merge_configs(candidate_config, hardware_config)
         domain_config_repository.update(**candidate_config.model_dump())
         gpio_manager.load_devices(merged_devices)
+        self._emit_state_changes_after_reload(previous_states=previous_states)
         return True
+
+    def sync_device_state_to_config(
+        self,
+        *,
+        device_number: int,
+        mode_override: Optional[DeviceMode] = None,
+    ) -> bool:
+        try:
+            domain_config = domain_config_repository.load()
+            if device_number not in domain_config.devices:
+                logger.error(
+                    "Cannot sync state: device_number=%s not found in config",
+                    device_number,
+                )
+                return False
+
+            actual_state = gpio_manager.read_is_on_by_number(device_number)
+            candidate_config = domain_config.model_copy(deep=True)
+            candidate_device = candidate_config.devices[device_number]
+
+            if mode_override is not None:
+                candidate_device.mode = mode_override
+
+            if candidate_device.mode == DeviceMode.MANUAL:
+                candidate_device.desired_state = actual_state
+            else:
+                candidate_device.desired_state = None
+
+            domain_config_repository.update(**candidate_config.model_dump())
+
+            runtime_device = gpio_manager.get_by_number(device_number)
+            if runtime_device:
+                runtime_device.mode = candidate_device.mode
+                runtime_device.desired_state = candidate_device.desired_state
+
+            return True
+        except Exception:
+            logger.exception("Failed to sync state for device_number=%s", device_number)
+            return False
+
+    @staticmethod
+    def _is_valid_device_number(device_number: int, device_max: int) -> bool:
+        return 1 <= device_number <= device_max
 
     def create_device(self, payload: DeviceCreatedPayload) -> bool:
         domain_config = domain_config_repository.load()
         device_number = int(payload.device_number)
+
+        if not self._is_valid_device_number(device_number, domain_config.device_max):
+            logger.error(
+                "Cannot create device: device_number=%s outside valid range 1..%s",
+                device_number,
+                domain_config.device_max,
+            )
+            return False
+
+        if len(domain_config.devices) >= domain_config.device_max:
+            logger.error(
+                "Cannot create device: device_max reached (%s)",
+                domain_config.device_max,
+            )
+            return False
 
         if device_number in domain_config.devices:
             logger.error(
@@ -68,35 +188,51 @@ class GPIOService:
             logger.error("Invalid device mode for create: %s", payload.mode)
             return False
 
+        requested_is_on = bool(payload.is_on)
+        initial_desired_state = None
+        if mode == DeviceMode.MANUAL:
+            initial_desired_state = requested_is_on
+
         candidate_config = domain_config.model_copy(deep=True)
         candidate_config.devices[device_number] = DeviceConfig(
             device_id=payload.device_id,
+            device_uuid=payload.device_uuid,
+            device_number=device_number,
             mode=mode,
-            power_threshold=payload.threshold_kw,
+            rated_power=payload.rated_power,
+            threshold_value=payload.threshold_value,
+            desired_state=initial_desired_state,
         )
 
         try:
             self._persist_candidate_config(candidate_config)
         except Exception:
-            logger.exception("Failed to create device %s", payload.device_id)
+            logger.exception("Failed to create device_number=%s", device_number)
             return False
 
+        actual_is_on = gpio_manager.read_is_on_by_number(device_number)
+
         logger.info(
-            "Device created: number=%s id=%s mode=%s",
+            "Device created: number=%s id=%s mode=%s rated_power=%s threshold=%s "
+            "requested_is_on=%s actual_is_on=%s",
             device_number,
             payload.device_id,
             mode.value,
+            payload.rated_power,
+            payload.threshold_value,
+            requested_is_on,
+            actual_is_on,
         )
         return True
 
     def update_device(self, payload: DeviceUpdatedPayload) -> bool:
         domain_config = domain_config_repository.load()
-        device_number = self._find_device_number_by_id(payload.device_id)
+        device_number = int(payload.device_number)
 
-        if device_number is None:
+        if device_number not in domain_config.devices:
             logger.error(
-                "Cannot update device: device_id=%s not found",
-                payload.device_id,
+                "Cannot update device: device_number=%s not found",
+                device_number,
             )
             return False
 
@@ -108,32 +244,50 @@ class GPIOService:
 
         candidate_config = domain_config.model_copy(deep=True)
         candidate_device = candidate_config.devices[device_number]
+        candidate_device.device_id = payload.device_id
+        if payload.device_uuid:
+            candidate_device.device_uuid = payload.device_uuid
+        candidate_device.device_number = device_number
         candidate_device.mode = mode
-        candidate_device.power_threshold = payload.threshold_kw
+
+        if mode != DeviceMode.MANUAL:
+            candidate_device.desired_state = None
+
+        if "rated_power" in payload.model_fields_set:
+            candidate_device.rated_power = payload.rated_power
+
+        if "threshold_value" in payload.model_fields_set:
+            candidate_device.threshold_value = payload.threshold_value
 
         try:
             self._persist_candidate_config(candidate_config)
         except Exception:
-            logger.exception("Failed to update device %s", payload.device_id)
+            logger.exception("Failed to update device_number=%s", device_number)
+            return False
+
+        if mode != DeviceMode.MANUAL and not self.sync_device_state_to_config(
+            device_number=device_number
+        ):
             return False
 
         logger.info(
-            "Device updated: number=%s id=%s mode=%s threshold=%s",
+            "Device updated: number=%s id=%s mode=%s rated_power=%s threshold=%s",
             device_number,
             payload.device_id,
             mode.value,
-            payload.threshold_kw,
+            candidate_device.rated_power,
+            candidate_device.threshold_value,
         )
         return True
 
     def delete_device(self, payload: DeviceDeletePayload) -> bool:
         domain_config = domain_config_repository.load()
-        device_number = self._find_device_number_by_id(payload.device_id)
+        device_number = int(payload.device_number)
 
-        if device_number is None:
+        if device_number not in domain_config.devices:
             logger.error(
-                "Cannot delete device: device_id=%s not found",
-                payload.device_id,
+                "Cannot delete device: device_number=%s not found",
+                device_number,
             )
             return False
 
@@ -143,44 +297,67 @@ class GPIOService:
         try:
             self._persist_candidate_config(candidate_config)
         except Exception:
-            logger.exception("Failed to delete device %s", payload.device_id)
+            logger.exception("Failed to delete device_number=%s", device_number)
             return False
 
         logger.info(
-            "Device deleted: number=%s id=%s",
+            "Device deleted: number=%s",
             device_number,
-            payload.device_id,
         )
         return True
 
-    def set_manual_state(self, payload: DeviceCommandPayload) -> bool:
-        device = gpio_manager.get_by_id(payload.device_id)
+    def set_manual_state(
+        self, payload: DeviceCommandPayload
+    ) -> Optional[RuntimeDevice]:
+        device = gpio_manager.get_by_number(payload.device_number)
         if not device:
-            logger.error("Cannot set manual state: device_id=%s not found", payload.device_id)
-            return False
+            logger.error("Device not found: %s", payload.device_number)
+            return None
 
-        if self._mode_value(device.mode) != DeviceMode.MANUAL.value:
-            logger.info(
-                "Ignoring manual command for device_id=%s in mode=%s",
-                payload.device_id,
-                self._mode_value(device.mode),
-            )
-            return False
+        device.mode = DeviceMode.MANUAL
+        device.desired_state = payload.is_on
+
+        current_state = gpio_manager.read_is_on_by_number(device.device_number)
+        if current_state == payload.is_on:
+            if not self.sync_device_state_to_config(
+                device_number=device.device_number,
+                mode_override=DeviceMode.MANUAL,
+            ):
+                return None
+            device.desired_state = current_state
+            return device
 
         changed = gpio_manager.set_state_by_number(
             device.device_number,
             payload.is_on,
         )
+
         if not changed:
-            return False
+            return None
+
+        if not self.sync_device_state_to_config(
+            device_number=device.device_number,
+            mode_override=DeviceMode.MANUAL,
+        ):
+            return None
+
+        actual_state = gpio_manager.read_is_on_by_number(device.device_number)
+        device.desired_state = actual_state
 
         backend_adapter.log_device_event(
-            device_id=device.device_id,
+            device_number=device.device_number,
             event_type=DeviceEventType.STATE,
-            pin_state=payload.is_on,
-            trigger_reason="DEVICE_COMMAND",
+            is_on=actual_state,
+            trigger_reason=DeviceTriggerReason.DEVICE_COMMAND,
         )
-        return True
+        self._publish_state_change_device_event_async(
+            device=device,
+            is_on=actual_state,
+            event_type=DeviceEventType.STATE,
+            trigger_reason=DeviceTriggerReason.DEVICE_COMMAND,
+        )
+
+        return device
 
 
 gpio_service = GPIOService()

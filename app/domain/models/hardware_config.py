@@ -1,10 +1,10 @@
 from pydantic import BaseModel
-from typing import Dict, Optional
+from typing import Dict
 
 
 class HardwareDeviceConfig(BaseModel):
     gpio: int
-    active_low: Optional[bool] = None
+    active_low: bool
 
 
 class HardwareConfig(BaseModel):

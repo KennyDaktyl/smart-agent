@@ -1,19 +1,36 @@
 {
+  "config_version": 2,
+  "microcontroller_uuid": "00000000-0000-0000-0000-000000000000",
+  "provider_uuid": "00000000-0000-0000-0000-000000000000",
   "active_low": false,
+
   "heartbeat": {
     "enabled": true,
-    "interval": 5
+    "interval": 60
   },
+
   "device_max": 2,
+
   "devices": {
     "1": {
-      "device_id": 120,
-      "mode": "MANUAL",
-      "power_threshold": null,
-      "rated_power": null,
-      "desired_state": false
+      "device_id": 1,
+      "device_uuid": "00000000-0000-0000-0000-000000000001",
+      "device_number": 1,
+      "mode": "AUTO",
+      "rated_power": 2.0,
+      "threshold_value": 3.0,
+      "desired_state": null,
+      "is_on": false
+    },
+    "2": {
+      "device_id": 2,
+      "device_uuid": "00000000-0000-0000-0000-000000000002",
+      "device_number": 2,
+      "mode": "AUTO",
+      "rated_power": 2.0,
+      "threshold_value": 2.0,
+      "desired_state": null,
+      "is_on": false
     }
-  },
-  "microcontroller_uuid": "beebc09e-f272-4471-8c3e-4e9021775876",
-  "provider_uuid": "4488463d-7007-4e1a-a700-e50129213f92"
+  }
 }

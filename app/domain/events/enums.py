@@ -7,5 +7,15 @@ class EventType(str, Enum):
     DEVICE_DELETED = "DEVICE_DELETED"
     CURRENT_ENERGY = "CURRENT_ENERGY"
     DEVICE_COMMAND = "DEVICE_COMMAND"
+    PROVIDER_UPDATED = "PROVIDER_UPDATED"
     UPDATE_REQUEST = "UPDATE_REQUEST"
     HEARTBEAT = "HEARTBEAT"
+
+
+class HeartbeatControlAction(str, Enum):
+    START_HEARTBEAT = "START_HEARTBEAT"
+    STOP_HEARTBEAT = "STOP_HEARTBEAT"
+
+
+class HeartbeatStatus(str, Enum):
+    ONLINE = "online"

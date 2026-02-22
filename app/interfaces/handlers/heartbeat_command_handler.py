@@ -2,13 +2,9 @@ import json
 import logging
 
 from app.core.heartbeat_service import heartbeat_service
+from app.domain.events.enums import HeartbeatControlAction
 
 logger = logging.getLogger(__name__)
-
-
-class HeartbeatControlActions:
-    START = "START_HEARTBEAT"
-    STOP = "STOP_HEARTBEAT"
 
 
 async def handle_heartbeat_command(msg):
@@ -16,27 +12,33 @@ async def handle_heartbeat_command(msg):
     try:
         payload = json.loads(msg.data.decode())
 
-        action = payload.get("action")
+        raw_action = payload.get("action")
+        action = None
+        if isinstance(raw_action, str):
+            try:
+                action = HeartbeatControlAction(raw_action)
+            except ValueError:
+                action = None
 
         logger.info(
             "HEARTBEAT CONTROL RECEIVED | subject=%s action=%s",
             msg.subject,
-            action,
+            raw_action,
         )
 
         match action:
-            case HeartbeatControlActions.START:
+            case HeartbeatControlAction.START_HEARTBEAT:
                 await heartbeat_service.start()
                 logger.info("Heartbeat started via control command")
 
-            case HeartbeatControlActions.STOP:
+            case HeartbeatControlAction.STOP_HEARTBEAT:
                 await heartbeat_service.stop()
                 logger.info("Heartbeat stopped via control command")
 
             case _:
                 logger.warning(
                     "Unknown heartbeat control action: %s",
-                    action,
+                    raw_action,
                 )
 
     except Exception:

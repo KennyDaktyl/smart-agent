@@ -22,6 +22,24 @@ class DeviceEventType(str, Enum):
     ERROR = "ERROR"
 
 
+class DeviceTriggerReason(str, Enum):
+    DEVICE_COMMAND = "DEVICE_COMMAND"
+    AUTO_TRIGGER = "AUTO_TRIGGER"
+    POWER_MISSING = "POWER_MISSING"
+    STATE_CHANGE_FAILED = "STATE_CHANGE_FAILED"
+    CONFIG_SYNC_FAILED = "CONFIG_SYNC_FAILED"
+    CONFIG_APPLY = "CONFIG_APPLY"
+
+
+class DeviceState(str, Enum):
+    ON = "ON"
+    OFF = "OFF"
+
+
+class EventSource(str, Enum):
+    AGENT = "agent"
+
+
 class DeviceEventName(str, Enum):
     # --- STATE ---
     DEVICE_ON = "DEVICE_ON"
@@ -60,6 +78,10 @@ class BackendAdapter:
     def is_enabled(self) -> bool:
         return bool(self.base_url)
 
+    def _events_url(self) -> str:
+        # Use a single authoritative endpoint for both live sends and queue flush.
+        return f"{self.base_url}/device-events/agent"
+
     def _headers(self) -> dict:
         """
         Authorization headers for machine-to-machine auth.
@@ -96,7 +118,7 @@ class BackendAdapter:
             try:
                 payload = json.loads(line)
                 resp = httpx.post(
-                    f"{self.base_url}/device-events/agent",
+                    self._events_url(),
                     json=payload,
                     headers=self._headers(),
                     timeout=5.0,
@@ -124,45 +146,55 @@ class BackendAdapter:
     def log_device_event(
         self,
         *,
-        device_id: int,
+        device_number: int,
         event_type: DeviceEventType = DeviceEventType.STATE,
-        pin_state: bool | None,
-        trigger_reason: str,
+        is_on: bool | None,
+        trigger_reason: DeviceTriggerReason | str,
         power: float | None = None,
-        source: str = "agent",
+        source: EventSource | str = EventSource.AGENT,
     ):
         if not self.is_enabled():
             return
 
         event_name = (
             DeviceEventName.DEVICE_ON
-            if pin_state is True
+            if is_on is True
             else (
                 DeviceEventName.DEVICE_OFF
-                if pin_state is False
+                if is_on is False
                 else DeviceEventName.SNAPSHOT
             )
         )
 
+        trigger_reason_value = (
+            trigger_reason.value
+            if isinstance(trigger_reason, DeviceTriggerReason)
+            else trigger_reason
+        )
+        source_value = source.value if isinstance(source, EventSource) else source
+        device_state = (
+            DeviceState.ON.value
+            if is_on is True
+            else DeviceState.OFF.value if is_on is False else None
+        )
+
         payload = {
-            "device_id": device_id,
+            "device_number": device_number,
             "event_type": event_type.value,
             "event_name": event_name.value,
-            "device_state": (
-                "ON" if pin_state else "OFF" if pin_state is not None else None
-            ),
-            "pin_state": pin_state,
+            "device_state": device_state,
+            "is_on": is_on,
             "measured_value": power,
             "measured_unit": "kW" if power is not None else None,
-            "trigger_reason": trigger_reason,
-            "source": source,
+            "trigger_reason": trigger_reason_value,
+            "source": source_value,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         try:
             self._flush_queue()
             httpx.post(
-                f"{self.base_url}/device-events",
+                self._events_url(),
                 json=payload,
                 headers=self._headers(),
                 timeout=5.0,

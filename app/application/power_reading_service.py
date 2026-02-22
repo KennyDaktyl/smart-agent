@@ -1,11 +1,13 @@
 import logging
 from typing import List, Optional
 
-from app.domain.events.inverter_events import InverterProductionEvent
+from app.application.gpio_service import gpio_service
+from app.core.device_event_stream_service import device_event_stream_service
 from app.domain.gpio.runtime_device import RuntimeDevice
 from app.domain.models.agent_config import DeviceMode
 from app.infrastructure.backend.backend_adapter import (
     DeviceEventType,
+    DeviceTriggerReason,
     backend_adapter,
 )
 from app.infrastructure.gpio.gpio_manager import gpio_manager
@@ -28,61 +30,82 @@ class PowerReadingService:
         ]
 
     @staticmethod
-    def _normalize_power_to_kw(
-        power: Optional[float],
-        unit: Optional[str],
-    ) -> Optional[float]:
-        if power is None:
-            return None
-
-        if not unit:
-            return power
-
-        normalized_unit = unit.strip().upper()
-        if normalized_unit in {"W", "WATT", "WATTS"}:
-            return power / 1000.0
-
-        return power
-
-    @staticmethod
     def _log_backend_event(
         *,
         device: RuntimeDevice,
         is_on: bool,
         event_type: DeviceEventType,
-        trigger_reason: str,
-        power_kw: Optional[float],
+        trigger_reason: DeviceTriggerReason,
+        power_value: Optional[float],
     ) -> None:
         backend_adapter.log_device_event(
-            device_id=device.device_id,
+            device_number=device.device_number,
             event_type=event_type,
-            pin_state=is_on,
+            is_on=is_on,
             trigger_reason=trigger_reason,
-            power=power_kw,
+            power=power_value,
         )
 
-    async def handle_inverter_power(self, event: InverterProductionEvent) -> None:
-        await self.handle_power(
-            power=event.data.value,
-            unit=event.data.unit,
+    def _sync_state_or_log_error(
+        self,
+        *,
+        device: RuntimeDevice,
+        is_on: bool,
+        power_value: Optional[float],
+    ) -> bool:
+        if gpio_service.sync_device_state_to_config(device_number=device.device_number):
+            return True
+
+        logging.error(
+            "Failed to sync AUTO state to config for device_number=%s",
+            device.device_number,
         )
+        self._log_backend_event(
+            device=device,
+            is_on=is_on,
+            event_type=DeviceEventType.ERROR,
+            trigger_reason=DeviceTriggerReason.CONFIG_SYNC_FAILED,
+            power_value=power_value,
+        )
+        return False
+
+    async def _publish_state_change_device_event(
+        self,
+        *,
+        device: RuntimeDevice,
+        is_on: bool,
+        event_type: DeviceEventType,
+        trigger_reason: DeviceTriggerReason,
+        power_value: Optional[float],
+    ) -> None:
+        published = await device_event_stream_service.publish_state_change(
+            device=device,
+            is_on=is_on,
+            event_type=event_type,
+            trigger_reason=trigger_reason,
+            measured_value=power_value,
+        )
+        if not published:
+            logging.warning(
+                "Immediate device event publish failed for device_number=%s",
+                device.device_number,
+            )
 
     async def handle_power(
         self,
         *,
-        power: Optional[float],
-        unit: Optional[str],
+        value: Optional[float],
     ) -> None:
-        logging.info(f"Received inverter power = {power} {unit}")
+        logging.info("Received provider current power value=%s", value)
 
         auto_devices = self._get_auto_power_devices()
         if not auto_devices:
             logging.info("No AUTO devices. Nothing to do.")
             return
 
-        power_kw = self._normalize_power_to_kw(power, unit)
+        power_value = value
 
-        if power_kw is None:
+        if power_value is None:
             logging.warning(
                 "Active power missing. Forcing all AUTO devices OFF for safety."
             )
@@ -91,37 +114,59 @@ class PowerReadingService:
                     device.device_number,
                     False,
                 )
-                if changed:
+                if not changed:
+                    logging.error(
+                        "Failed to force OFF device_number=%s due to missing power",
+                        device.device_number,
+                    )
                     self._log_backend_event(
                         device=device,
-                        is_on=False,
+                        is_on=gpio_manager.read_is_on_by_number(device.device_number),
                         event_type=DeviceEventType.ERROR,
-                        trigger_reason="POWER_MISSING",
-                        power_kw=power_kw,
+                        trigger_reason=DeviceTriggerReason.STATE_CHANGE_FAILED,
+                        power_value=power_value,
                     )
+                    continue
+
+                self._sync_state_or_log_error(
+                    device=device,
+                    is_on=False,
+                    power_value=power_value,
+                )
+                self._log_backend_event(
+                    device=device,
+                    is_on=False,
+                    event_type=DeviceEventType.ERROR,
+                    trigger_reason=DeviceTriggerReason.POWER_MISSING,
+                    power_value=power_value,
+                )
+                await self._publish_state_change_device_event(
+                    device=device,
+                    is_on=False,
+                    event_type=DeviceEventType.ERROR,
+                    trigger_reason=DeviceTriggerReason.POWER_MISSING,
+                    power_value=power_value,
+                )
             return
 
         for device in auto_devices:
-            threshold = device.power_threshold
+            threshold = device.threshold_value
             if threshold is None:
                 logging.error(
-                    f"Device {device.device_id} has AUTO mode but no power_threshold."
+                    f"Device {device.device_number} has AUTO mode but no threshold_value."
                 )
                 continue
 
-            should_turn_on = power_kw >= threshold
-            current_is_on = gpio_manager.read_is_on_by_number(
-                device.device_number
-            )
+            should_turn_on = power_value >= threshold
+            current_is_on = gpio_manager.read_is_on_by_number(device.device_number)
 
             logging.info(
-                "AUTO device=%s number=%s threshold=%s current=%s target=%s power_kw=%s",
-                device.device_id,
+                "AUTO device_number=%s threshold=%s current=%s target=%s power_value=%s",
                 device.device_number,
                 threshold,
                 current_is_on,
                 should_turn_on,
-                power_kw,
+                power_value,
             )
 
             if current_is_on == should_turn_on:
@@ -132,14 +177,39 @@ class PowerReadingService:
                 should_turn_on,
             )
             if not changed:
+                logging.error(
+                    "Failed to set state for device_number=%s target=%s",
+                    device.device_number,
+                    should_turn_on,
+                )
+                self._log_backend_event(
+                    device=device,
+                    is_on=current_is_on,
+                    event_type=DeviceEventType.ERROR,
+                    trigger_reason=DeviceTriggerReason.STATE_CHANGE_FAILED,
+                    power_value=power_value,
+                )
                 continue
+
+            self._sync_state_or_log_error(
+                device=device,
+                is_on=should_turn_on,
+                power_value=power_value,
+            )
 
             self._log_backend_event(
                 device=device,
                 is_on=should_turn_on,
                 event_type=DeviceEventType.AUTO_TRIGGER,
-                trigger_reason="AUTO_TRIGGER",
-                power_kw=power_kw,
+                trigger_reason=DeviceTriggerReason.AUTO_TRIGGER,
+                power_value=power_value,
+            )
+            await self._publish_state_change_device_event(
+                device=device,
+                is_on=should_turn_on,
+                event_type=DeviceEventType.AUTO_TRIGGER,
+                trigger_reason=DeviceTriggerReason.AUTO_TRIGGER,
+                power_value=power_value,
             )
 
 

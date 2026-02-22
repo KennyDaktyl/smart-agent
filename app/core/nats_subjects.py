@@ -20,6 +20,10 @@ class AgentEvents:
     STATUS = "status"
 
 
+class DeviceEvents:
+    DEVICE_EVENT = "device_event"
+
+
 class AgentCommands:
     UPDATE_CONFIG = "update_config"
     RESTART = "restart"
@@ -54,4 +58,13 @@ class NatsSubjects:
             f"{micro_uuid}."
             f"{NatsChannels.COMMAND}."
             f"{command}"
+        )
+
+    @staticmethod
+    def device_event(device_uuid: str, event: str) -> str:
+        return (
+            f"{settings.NATS_PREFIX}."
+            f"{device_uuid}."
+            f"{NatsChannels.EVENT}."
+            f"{event}"
         )
