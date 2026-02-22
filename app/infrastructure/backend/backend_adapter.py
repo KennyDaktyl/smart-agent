@@ -80,12 +80,15 @@ class BackendAdapter:
     def is_enabled(self) -> bool:
         return bool(self.base_url)
 
-    def _events_url(self, device_uuid: str | None = None) -> str:
-        normalized_uuid = (device_uuid or "").strip()
-        if normalized_uuid:
-            encoded_uuid = quote(normalized_uuid, safe="")
-            return f"{self.base_url}/device-events/agent/{encoded_uuid}"
-        return f"{self.base_url}/device-events/agent"
+    class MissingDeviceUUIDError(ValueError):
+        pass
+
+    def _events_url(self, device_uuid: str) -> str:
+        normalized_uuid = device_uuid.strip()
+        if not normalized_uuid:
+            raise self.MissingDeviceUUIDError("device_uuid is required for agent event")
+        encoded_uuid = quote(normalized_uuid, safe="")
+        return f"{self.base_url}/device-events/agent/{encoded_uuid}"
 
     def _headers(self) -> dict:
         """
@@ -129,27 +132,24 @@ class BackendAdapter:
         return str(exc)
 
     def _prepare_request(self, payload: dict) -> tuple[str, dict]:
-        raw_device_uuid = payload.get("device_uuid")
+        normalized = self._enrich_identifiers_from_runtime(dict(payload))
+        raw_device_uuid = normalized.get("device_uuid")
         device_uuid = (
             raw_device_uuid.strip()
             if isinstance(raw_device_uuid, str) and raw_device_uuid.strip()
             else None
         )
-
-        if device_uuid:
-            request_payload = {
-                key: value
-                for key, value in payload.items()
-                if key not in {"device_uuid", "device_id", "device_number"}
-            }
-            return self._events_url(device_uuid), request_payload
+        if not device_uuid:
+            raise self.MissingDeviceUUIDError(
+                "device_uuid is required; old /agent endpoint without uuid is disabled"
+            )
 
         request_payload = {
-            key: value for key, value in payload.items() if key != "device_uuid"
+            key: value
+            for key, value in normalized.items()
+            if key not in {"device_uuid", "device_id", "device_number"}
         }
-        if request_payload.get("device_id") is not None:
-            request_payload.pop("device_number", None)
-        return self._events_url(), request_payload
+        return self._events_url(device_uuid), request_payload
 
     @staticmethod
     def _looks_like_valid_event_payload(payload: dict) -> bool:
@@ -216,69 +216,14 @@ class BackendAdapter:
             payload["device_uuid"] = runtime_device.device_uuid
         return payload
 
-    def _request_candidates(self, payload: dict) -> list[tuple[str, dict]]:
-        normalized = self._enrich_identifiers_from_runtime(dict(payload))
-        url, request_payload = self._prepare_request(normalized)
-
-        candidates: list[tuple[str, dict]] = [(url, request_payload)]
-
-        if "/device-events/agent/" in url:
-            fallback_payload = {
-                key: value for key, value in normalized.items() if key != "device_uuid"
-            }
-            if fallback_payload.get("device_id") is not None:
-                fallback_payload.pop("device_number", None)
-            candidates.append((self._events_url(), fallback_payload))
-
-        return candidates
-
     def _post_payload(self, payload: dict) -> requests.Response:
-        candidates = self._request_candidates(payload)
-        last_response: requests.Response | None = None
-        last_exception: requests.RequestException | None = None
-
-        for idx, (url, request_payload) in enumerate(candidates):
-            try:
-                response = requests.post(
-                    url,
-                    json=request_payload,
-                    headers=self._headers(),
-                    timeout=5.0,
-                )
-            except requests.RequestException as exc:
-                last_exception = exc
-                should_try_fallback = idx < len(candidates) - 1
-                if should_try_fallback:
-                    logging.warning(
-                        "BackendAdapter: request failed, retrying fallback endpoint. "
-                        "error=%s url=%s",
-                        exc,
-                        url,
-                    )
-                    continue
-                raise
-
-            last_response = response
-
-            should_try_fallback = (
-                response.status_code == 404 and idx < len(candidates) - 1
-            )
-            if should_try_fallback:
-                logging.warning(
-                    "BackendAdapter: endpoint not found, retrying with fallback "
-                    "endpoint. status=%s url=%s",
-                    response.status_code,
-                    url,
-                )
-                continue
-
-            return response
-
-        if last_exception is not None:
-            raise last_exception
-        if last_response is None:
-            raise RuntimeError("BackendAdapter: no request candidate generated")
-        return last_response
+        url, request_payload = self._prepare_request(payload)
+        return requests.post(
+            url,
+            json=request_payload,
+            headers=self._headers(),
+            timeout=5.0,
+        )
 
     def _flush_queue(self):
         if not self.queue_path.exists():
@@ -323,6 +268,13 @@ class BackendAdapter:
                     reason=f"json decode error: {exc}",
                 )
                 continue
+            except self.MissingDeviceUUIDError as exc:
+                remaining.append(line)
+                logging.warning(
+                    "BackendAdapter: queued event missing device_uuid, "
+                    "will keep queued. Error: %s",
+                    exc,
+                )
             except requests.HTTPError as exc:
                 remaining.append(line)
                 logging.warning(
@@ -412,6 +364,13 @@ class BackendAdapter:
             self._flush_queue()
             resp = self._post_payload(payload)
             resp.raise_for_status()
+        except self.MissingDeviceUUIDError as exc:
+            logging.warning(
+                "BackendAdapter: immediate send skipped, missing device_uuid. "
+                "Will keep queued. Error: %s",
+                exc,
+            )
+            self._enqueue(payload)
         except requests.HTTPError as exc:
             logging.warning(
                 "BackendAdapter: immediate send failed. Error: %s",
