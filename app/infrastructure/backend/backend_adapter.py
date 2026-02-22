@@ -1,11 +1,12 @@
 # app/infrastructure/backend/backend_adapter.py
 import json
 import logging
+import socket
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 
@@ -77,11 +78,57 @@ class BackendAdapter:
         except Exception:
             logging.warning("BackendAdapter: failed to prepare queue directory.")
 
+        if self.base_url:
+            logging.info("BackendAdapter: initialized | base_url=%s", self.base_url)
+            self._log_backend_target_resolution()
+        else:
+            logging.warning(
+                "BackendAdapter: disabled because BACKEND_URL is not configured."
+            )
+
     def is_enabled(self) -> bool:
         return bool(self.base_url)
 
     class MissingDeviceUUIDError(ValueError):
         pass
+
+    @staticmethod
+    def _truncate_text(text: str, limit: int = 700) -> str:
+        if len(text) <= limit:
+            return text
+        return f"{text[:limit]}...<truncated>"
+
+    def _log_backend_target_resolution(self) -> None:
+        try:
+            parsed = urlparse(self.base_url or "")
+            host = parsed.hostname
+            if not host:
+                logging.warning(
+                    "BackendAdapter: could not parse backend host from base_url=%s",
+                    self.base_url,
+                )
+                return
+
+            scheme = (parsed.scheme or "").lower()
+            port = parsed.port or (443 if scheme == "https" else 80)
+            resolved = sorted(
+                {
+                    entry[4][0]
+                    for entry in socket.getaddrinfo(
+                        host,
+                        port,
+                        proto=socket.IPPROTO_TCP,
+                    )
+                }
+            )
+            logging.info(
+                "BackendAdapter: backend DNS | host=%s port=%s resolved_ips=%s",
+                host,
+                port,
+                resolved,
+            )
+        except Exception as exc:
+            logging.warning("BackendAdapter: failed backend DNS resolution: %s", exc)
 
     def _events_url(self, device_uuid: str) -> str:
         normalized_uuid = device_uuid.strip()
@@ -218,12 +265,39 @@ class BackendAdapter:
 
     def _post_payload(self, payload: dict) -> requests.Response:
         url, request_payload = self._prepare_request(payload)
-        return requests.post(
+        headers = self._headers()
+
+        logging.info(
+            "BackendAdapter: sending event | url=%s auth=%s payload=%s",
+            url,
+            "present" if "Authorization" in headers else "missing",
+            request_payload,
+        )
+
+        response = requests.post(
             url,
             json=request_payload,
-            headers=self._headers(),
+            headers=headers,
             timeout=5.0,
         )
+        response_text = self._truncate_text(response.text or "")
+
+        if response.status_code >= 400:
+            logging.warning(
+                "BackendAdapter: response error | status=%s url=%s body=%s",
+                response.status_code,
+                url,
+                response_text,
+            )
+        else:
+            logging.info(
+                "BackendAdapter: response ok | status=%s url=%s body=%s",
+                response.status_code,
+                url,
+                response_text,
+            )
+
+        return response
 
     def _flush_queue(self):
         if not self.queue_path.exists():

@@ -1,7 +1,7 @@
 import json
 import logging
 
-from app.core.heartbeat_service import heartbeat_service
+from app.core.heartbeat_service import HeartbeatPublishTrigger, heartbeat_service
 from app.domain.events.enums import HeartbeatControlAction
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,15 @@ async def handle_heartbeat_command(msg):
             case HeartbeatControlAction.START_HEARTBEAT:
                 await heartbeat_service.start()
                 logger.info("Heartbeat started via control command")
+
+            case HeartbeatControlAction.RELOAD_HEARTBEAT:
+                published = await heartbeat_service.publish_now(
+                    trigger=HeartbeatPublishTrigger.RELOAD,
+                )
+                if published:
+                    logger.info("Heartbeat reloaded via control command")
+                else:
+                    logger.warning("Heartbeat reload publish failed via control command")
 
             case HeartbeatControlAction.STOP_HEARTBEAT:
                 await heartbeat_service.stop()

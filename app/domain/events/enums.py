@@ -14,6 +14,7 @@ class EventType(str, Enum):
 
 class HeartbeatControlAction(str, Enum):
     START_HEARTBEAT = "START_HEARTBEAT"
+    RELOAD_HEARTBEAT = "RELOAD_HEARTBEAT"
     STOP_HEARTBEAT = "STOP_HEARTBEAT"
 
 

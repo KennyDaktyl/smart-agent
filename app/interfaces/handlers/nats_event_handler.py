@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from app.application.event_service import event_service
 from app.application.provider_service import ProviderUpdateResult
-from app.core.heartbeat_service import heartbeat_service
+from app.core.heartbeat_service import HeartbeatPublishTrigger, heartbeat_service
 from app.core.nats_client import nats_client
 from app.domain.events.device_events import (
     DeviceCommandEvent,
@@ -182,8 +182,18 @@ async def handle_heartbeat_control(payload: dict):
 
     if action == HeartbeatControlAction.START_HEARTBEAT:
         await heartbeat_service.start()
+        logger.info("Heartbeat started via control command")
+    elif action == HeartbeatControlAction.RELOAD_HEARTBEAT:
+        published = await heartbeat_service.publish_now(
+            trigger=HeartbeatPublishTrigger.RELOAD,
+        )
+        if published:
+            logger.info("Heartbeat reloaded via control command")
+        else:
+            logger.warning("Heartbeat reload publish failed via control command")
     elif action == HeartbeatControlAction.STOP_HEARTBEAT:
         await heartbeat_service.stop()
+        logger.info("Heartbeat stopped via control command")
     else:
         logger.warning("Unknown heartbeat action: %s", raw_action)
 
