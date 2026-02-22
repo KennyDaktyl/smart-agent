@@ -143,14 +143,95 @@ class BackendAdapter:
             request_payload.pop("device_number", None)
         return self._events_url(), request_payload
 
+    @staticmethod
+    def _looks_like_valid_event_payload(payload: dict) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        if not payload.get("event_name"):
+            return False
+        if not payload.get("event_type"):
+            return False
+        return True
+
+    @staticmethod
+    def _enrich_identifiers_from_runtime(payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            return payload
+
+        if payload.get("device_id") is not None and payload.get("device_uuid"):
+            return payload
+
+        device_number = payload.get("device_number")
+        if device_number is None:
+            return payload
+
+        try:
+            device_number_int = int(device_number)
+        except (TypeError, ValueError):
+            return payload
+
+        try:
+            from app.infrastructure.gpio.gpio_manager import gpio_manager
+
+            runtime_device = gpio_manager.get_by_number(device_number_int)
+        except Exception:
+            runtime_device = None
+
+        if not runtime_device:
+            return payload
+
+        if payload.get("device_id") is None:
+            payload["device_id"] = runtime_device.device_id
+        if not payload.get("device_uuid"):
+            payload["device_uuid"] = runtime_device.device_uuid
+        return payload
+
+    def _request_candidates(self, payload: dict) -> list[tuple[str, dict]]:
+        normalized = self._enrich_identifiers_from_runtime(dict(payload))
+        url, request_payload = self._prepare_request(normalized)
+
+        candidates: list[tuple[str, dict]] = [(url, request_payload)]
+
+        if "/device-events/agent/" in url:
+            fallback_payload = {
+                key: value for key, value in normalized.items() if key != "device_uuid"
+            }
+            if fallback_payload.get("device_id") is not None:
+                fallback_payload.pop("device_number", None)
+            candidates.append((self._events_url(), fallback_payload))
+
+        return candidates
+
     def _post_payload(self, payload: dict) -> httpx.Response:
-        url, request_payload = self._prepare_request(payload)
-        return httpx.post(
-            url,
-            json=request_payload,
-            headers=self._headers(),
-            timeout=5.0,
-        )
+        candidates = self._request_candidates(payload)
+        last_response: httpx.Response | None = None
+
+        for idx, (url, request_payload) in enumerate(candidates):
+            response = httpx.post(
+                url,
+                json=request_payload,
+                headers=self._headers(),
+                timeout=5.0,
+            )
+            last_response = response
+
+            should_try_fallback = (
+                response.status_code == 404 and idx < len(candidates) - 1
+            )
+            if should_try_fallback:
+                logging.warning(
+                    "BackendAdapter: endpoint not found, retrying with fallback "
+                    "endpoint. status=%s url=%s",
+                    response.status_code,
+                    url,
+                )
+                continue
+
+            return response
+
+        if last_response is None:
+            raise RuntimeError("BackendAdapter: no request candidate generated")
+        return last_response
 
     def _flush_queue(self):
         if not self.queue_path.exists():
@@ -167,6 +248,12 @@ class BackendAdapter:
         for line in lines:
             try:
                 payload = json.loads(line)
+                if not self._looks_like_valid_event_payload(payload):
+                    logging.error(
+                        "BackendAdapter: dropping invalid queued payload: %s",
+                        payload,
+                    )
+                    continue
                 resp = self._post_payload(payload)
                 resp.raise_for_status()
                 logging.info(f"BackendAdapter: flushed queued event {payload}")
