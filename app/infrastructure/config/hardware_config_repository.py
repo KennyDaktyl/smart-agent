@@ -1,4 +1,6 @@
+import errno
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -51,12 +53,40 @@ class HardwareConfigRepository:
             str(k): v for k, v in data["devices"].items()
         }
 
+        self._write_json_with_fallback(data=data, tmp_path=tmp_path)
+
+    def _write_json_with_fallback(self, *, data: dict, tmp_path: Path) -> None:
         with tmp_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
 
-        tmp_path.replace(self._config_path)
+        try:
+            tmp_path.replace(self._config_path)
+            logger.info("Hardware config saved (atomic write)")
+            return
+        except OSError as exc:
+            if exc.errno not in {errno.EBUSY, errno.EXDEV, errno.EPERM}:
+                raise
 
-        logger.info("Hardware config saved (atomic write)")
+            logger.warning(
+                "Atomic replace failed for hardware config (%s). "
+                "Falling back to in-place write: %s",
+                self._config_path,
+                exc,
+            )
+
+        with self._config_path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            logger.debug("Failed to remove temp hardware config file: %s", tmp_path)
+
+        logger.info("Hardware config saved (in-place write)")
 
     def reload(self) -> HardwareConfig:
         self._config = None
