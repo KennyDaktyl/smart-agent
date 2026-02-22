@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
-import httpx
+import requests
 
 from app.core.config import settings
 
@@ -71,6 +71,7 @@ class BackendAdapter:
     def __init__(self, base_url: Optional[str]):
         self.base_url = base_url.rstrip("/") if base_url else None
         self.queue_path = Path(settings.LOG_DIR) / "pending_backend_events.jsonl"
+        self.invalid_queue_path = Path(settings.LOG_DIR) / "invalid_backend_events.jsonl"
         try:
             self.queue_path.parent.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -107,17 +108,24 @@ class BackendAdapter:
             logging.error(f"BackendAdapter: failed to enqueue offline event: {exc}")
 
     @staticmethod
-    def _http_error_details(exc: httpx.HTTPStatusError) -> str:
+    def _http_error_details(exc: requests.HTTPError) -> str:
+        response = getattr(exc, "response", None)
+        request = getattr(exc, "request", None)
+
         try:
-            body = exc.response.text.strip()
+            body = response.text.strip() if response is not None else ""
         except Exception:
             body = ""
 
+        status = response.status_code if response is not None else "unknown"
+        url = None
+        if request is not None:
+            url = getattr(request, "url", None)
+        if not url and response is not None:
+            url = getattr(response, "url", None)
+
         if body:
-            return (
-                f"status={exc.response.status_code} url={exc.request.url} "
-                f"body={body}"
-            )
+            return f"status={status} url={url} body={body}"
         return str(exc)
 
     def _prepare_request(self, payload: dict) -> tuple[str, dict]:
@@ -152,6 +160,28 @@ class BackendAdapter:
         if not payload.get("event_type"):
             return False
         return True
+
+    def _store_invalid_queue_line(
+        self,
+        *,
+        raw_line: str,
+        reason: str,
+        payload: dict | None = None,
+    ) -> None:
+        try:
+            record = {
+                "reason": reason,
+                "raw_line": raw_line.rstrip("\n"),
+                "payload": payload,
+                "logged_at": datetime.now(timezone.utc).isoformat(),
+            }
+            with open(self.invalid_queue_path, "a") as f:
+                f.write(json.dumps(record) + "\n")
+        except Exception as exc:
+            logging.error(
+                "BackendAdapter: failed to persist invalid queue line: %s",
+                exc,
+            )
 
     @staticmethod
     def _enrich_identifiers_from_runtime(payload: dict) -> dict:
@@ -202,17 +232,32 @@ class BackendAdapter:
 
         return candidates
 
-    def _post_payload(self, payload: dict) -> httpx.Response:
+    def _post_payload(self, payload: dict) -> requests.Response:
         candidates = self._request_candidates(payload)
-        last_response: httpx.Response | None = None
+        last_response: requests.Response | None = None
+        last_exception: requests.RequestException | None = None
 
         for idx, (url, request_payload) in enumerate(candidates):
-            response = httpx.post(
-                url,
-                json=request_payload,
-                headers=self._headers(),
-                timeout=5.0,
-            )
+            try:
+                response = requests.post(
+                    url,
+                    json=request_payload,
+                    headers=self._headers(),
+                    timeout=5.0,
+                )
+            except requests.RequestException as exc:
+                last_exception = exc
+                should_try_fallback = idx < len(candidates) - 1
+                if should_try_fallback:
+                    logging.warning(
+                        "BackendAdapter: request failed, retrying fallback endpoint. "
+                        "error=%s url=%s",
+                        exc,
+                        url,
+                    )
+                    continue
+                raise
+
             last_response = response
 
             should_try_fallback = (
@@ -229,6 +274,8 @@ class BackendAdapter:
 
             return response
 
+        if last_exception is not None:
+            raise last_exception
         if last_response is None:
             raise RuntimeError("BackendAdapter: no request candidate generated")
         return last_response
@@ -247,22 +294,48 @@ class BackendAdapter:
         remaining = []
         for line in lines:
             try:
-                payload = json.loads(line)
+                stripped_line = line.strip()
+                if not stripped_line:
+                    continue
+
+                payload = json.loads(stripped_line)
                 if not self._looks_like_valid_event_payload(payload):
                     logging.error(
                         "BackendAdapter: dropping invalid queued payload: %s",
                         payload,
                     )
+                    self._store_invalid_queue_line(
+                        raw_line=line,
+                        reason="missing event_name/event_type",
+                        payload=payload,
+                    )
                     continue
                 resp = self._post_payload(payload)
                 resp.raise_for_status()
                 logging.info(f"BackendAdapter: flushed queued event {payload}")
-            except httpx.HTTPStatusError as exc:
+            except json.JSONDecodeError as exc:
+                logging.error(
+                    "BackendAdapter: dropping malformed queued line. Error: %s",
+                    exc,
+                )
+                self._store_invalid_queue_line(
+                    raw_line=line,
+                    reason=f"json decode error: {exc}",
+                )
+                continue
+            except requests.HTTPError as exc:
                 remaining.append(line)
                 logging.warning(
                     "BackendAdapter: failed to flush queued event, "
                     "will keep queued. Error: %s",
                     self._http_error_details(exc),
+                )
+            except requests.RequestException as exc:
+                remaining.append(line)
+                logging.warning(
+                    "BackendAdapter: failed to flush queued event due to request "
+                    "error, will keep queued. Error: %s",
+                    exc,
                 )
             except Exception as exc:
                 remaining.append(line)
@@ -339,10 +412,17 @@ class BackendAdapter:
             self._flush_queue()
             resp = self._post_payload(payload)
             resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
+        except requests.HTTPError as exc:
             logging.warning(
                 "BackendAdapter: immediate send failed. Error: %s",
                 self._http_error_details(exc),
+            )
+            self._enqueue(payload)
+        except requests.RequestException as exc:
+            logging.warning(
+                "BackendAdapter: immediate send failed due to request error. "
+                "Error: %s",
+                exc,
             )
             self._enqueue(payload)
         except Exception as exc:
