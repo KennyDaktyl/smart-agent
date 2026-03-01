@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     # ===== BASE PATH =====
     BASE_DIR: Path = Path.cwd()
 
+    # ===== ENVIRONMENT =====
+    ENV: str = Field("development", env="ENV")
+
     # ===== LOGGING =====
     LOG_DIR: str = Field("logs", env="LOG_DIR")
     LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
@@ -17,6 +20,7 @@ class Settings(BaseSettings):
     # ===== AUTH =====
     BACKEND_URL: str | None = Field(None, env="BACKEND_URL")
     BACKEND_AGENT_TOKEN: str | None = Field(None, env="BACKEND_AGENT_TOKEN")
+    SENTRY_DSN: str | None = Field(None, env="SENTRY_DSN")
 
     # ===== NATS =====
     NATS_URL: str = Field(..., env="NATS_URL")

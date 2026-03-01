@@ -1,6 +1,8 @@
 import asyncio
+import sentry_sdk
 
 from app.application.device_factory import merge_configs
+from app.core.config import settings
 from app.core.logging_config import logger
 from app.core.nats_subjects import NatsSubjects
 from app.core.heartbeat_service import heartbeat_service
@@ -22,6 +24,20 @@ from app.interfaces.handlers.nats_event_handler import nats_event_handler
 from app.interfaces.handlers.power_reading_handler import (
     inverter_production_handler,
 )
+
+
+def _init_sentry() -> None:
+    sentry_dsn = settings.SENTRY_DSN
+    if not sentry_dsn:
+        logger.info("Sentry disabled (SENTRY_DSN is not set)")
+        return
+
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        send_default_pii=True,
+        environment=settings.ENV,
+    )
+    logger.info("Sentry enabled for ENV=%s", settings.ENV)
 
 
 async def bootstrap_gpio():
@@ -68,6 +84,7 @@ async def setup_nats(domain_config: AgentConfig):
 
 async def main():
     try:
+        _init_sentry()
         logger.info("🚀 Starting Smart Energy Agent")
 
         domain_config = await bootstrap_gpio()
