@@ -133,6 +133,15 @@ class PowerReadingService:
                 "Active power missing. Forcing all AUTO devices OFF for safety."
             )
             for device in auto_devices:
+                current_is_on = gpio_manager.read_is_on_by_number(device.device_number)
+                if not current_is_on:
+                    logging.info(
+                        "Skipping POWER_MISSING event for device_number=%s "
+                        "(already OFF)",
+                        device.device_number,
+                    )
+                    continue
+
                 changed = gpio_manager.set_state_by_number(
                     device.device_number,
                     False,
