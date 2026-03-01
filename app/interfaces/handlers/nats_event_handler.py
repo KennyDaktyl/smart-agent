@@ -43,6 +43,7 @@ async def nats_event_handler(msg):
     ack_subject = None
     device_id = UNKNOWN_DEVICE_ID
     device_number = UNKNOWN_DEVICE_NUMBER
+    command_id: str | None = None
 
     try:
         raw = json.loads(msg.data.decode())
@@ -66,6 +67,7 @@ async def nats_event_handler(msg):
 
         device_id = _extract_device_id(raw)
         device_number = _extract_device_number(raw)
+        command_id = _extract_command_id(raw)
 
         try:
             event = parse_device_event(event_type, raw)
@@ -76,6 +78,7 @@ async def nats_event_handler(msg):
                 device_id=device_id,
                 device_number=device_number,
                 ok=False,
+                command_id=command_id,
             )
             return
 
@@ -86,6 +89,7 @@ async def nats_event_handler(msg):
                 device_id=device_id,
                 device_number=device_number,
                 ok=False,
+                command_id=command_id,
             )
             return
 
@@ -100,6 +104,13 @@ async def nats_event_handler(msg):
 
         # DEVICE_COMMAND → extended ACK
         if isinstance(event, DeviceCommandEvent):
+            logger.info(
+                "Device command executed | device_id=%s device_number=%s mode=%s is_on=%s",
+                event.data.device_id,
+                event.data.device_number,
+                event.data.mode,
+                event.data.is_on,
+            )
             ok = isinstance(result, RuntimeDevice)
             await send_event_ack(
                 device=result if ok else None,
@@ -107,6 +118,7 @@ async def nats_event_handler(msg):
                 ok=ok,
                 device_id=device_id,
                 device_number=device_number,
+                command_id=event.data.command_id or command_id,
             )
             return
 
@@ -116,6 +128,7 @@ async def nats_event_handler(msg):
             device_id=device_id,
             device_number=device_number,
             ok=bool(result),
+            command_id=command_id,
         )
 
     except json.JSONDecodeError:
@@ -126,6 +139,7 @@ async def nats_event_handler(msg):
                 device_id=device_id,
                 device_number=device_number,
                 ok=False,
+                command_id=command_id,
             )
     except Exception:
         logger.exception("🔥 Unhandled error while processing command")
@@ -135,6 +149,7 @@ async def nats_event_handler(msg):
                 device_id=device_id,
                 device_number=device_number,
                 ok=False,
+                command_id=command_id,
             )
 
 
@@ -162,6 +177,17 @@ def _extract_device_number(raw: dict) -> int:
     if isinstance(data, dict):
         return _extract_int(data.get("device_number"), UNKNOWN_DEVICE_NUMBER)
     return UNKNOWN_DEVICE_NUMBER
+
+
+def _extract_command_id(raw: dict) -> str | None:
+    data = raw.get("data")
+    if not isinstance(data, dict):
+        return None
+    value = data.get("command_id")
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    return None
 
 
 # ============================================================
@@ -232,6 +258,7 @@ async def send_event_ack(
     ok: bool,
     device_id: int,
     device_number: int,
+    command_id: str | None = None,
 ):
     is_on = gpio_manager.read_is_on_by_number(device_number)
     payload_data = {
@@ -251,6 +278,8 @@ async def send_event_ack(
         payload_data["desired_state"] = device.desired_state
         payload_data["actual_state"] = is_on
         payload_data["is_on"] = is_on
+    if command_id:
+        payload_data["command_id"] = command_id
 
     ack_payload = {"data": payload_data}
 
@@ -264,16 +293,18 @@ async def send_ack(
     device_id: int,
     device_number: int,
     ok: bool,
+    command_id: str | None = None,
 ):
     is_on = gpio_manager.read_is_on_by_number(device_number)
-    ack_payload = {
-        "data": {
-            "device_id": device_id,
-            "device_number": device_number,
-            "ok": ok,
-            "is_on": is_on,
-        }
+    payload_data = {
+        "device_id": device_id,
+        "device_number": device_number,
+        "ok": ok,
+        "is_on": is_on,
     }
+    if command_id:
+        payload_data["command_id"] = command_id
+    ack_payload = {"data": payload_data}
 
     await nats_client.publish_raw(ack_subject, ack_payload)
 

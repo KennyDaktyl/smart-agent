@@ -24,6 +24,7 @@ class GPIOManager:
 
     def load_devices(self, devices: List[RuntimeDevice]) -> None:
         seen_numbers: set[int] = set()
+        previous_devices = self.devices_by_number
 
         for device in devices:
             if device.device_number in seen_numbers:
@@ -36,7 +37,24 @@ class GPIOManager:
         self.devices_by_number = {d.device_number: d for d in devices}
 
         for device in devices:
-            gpio_controller.initialize_pin(device.gpio, device.active_low)
+            previous_device = previous_devices.get(device.device_number)
+            is_existing_same_hardware = (
+                previous_device is not None
+                and previous_device.gpio == device.gpio
+                and previous_device.active_low == device.active_low
+            )
+
+            # Keep current runtime pin state for unchanged devices.
+            # This avoids OFF blips on config-only updates (e.g. AUTO threshold).
+            if not is_existing_same_hardware:
+                gpio_controller.initialize_pin(device.gpio, device.active_low)
+            else:
+                logger.info(
+                    "Skipping GPIO reinit for device_number=%s gpio=%s "
+                    "(unchanged hardware mapping)",
+                    device.device_number,
+                    device.gpio,
+                )
 
             mode = device.mode.value if hasattr(device.mode, "value") else str(device.mode)
             if mode == DeviceMode.MANUAL.value and device.desired_state is not None:

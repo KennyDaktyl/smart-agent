@@ -90,7 +90,7 @@ class EventService:
 
     async def _handle_device_command(self, event: DeviceCommandEvent):
         logging.info(f"Executing device command -> {event.data}")
-        return gpio_service.set_manual_state(event.data)
+        return gpio_service.set_state_from_command(event.data)
 
     async def _handle_provider_updated(self, event: ProviderUpdatedEvent):
         logging.info(

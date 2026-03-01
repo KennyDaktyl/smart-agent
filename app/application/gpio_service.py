@@ -345,7 +345,7 @@ class GPIOService:
         )
         return True
 
-    def set_manual_state(
+    def set_state_from_command(
         self, payload: DeviceCommandPayload
     ) -> Optional[RuntimeDevice]:
         device = gpio_manager.get_by_number(payload.device_number)
@@ -353,17 +353,37 @@ class GPIOService:
             logger.error("Device not found: %s", payload.device_number)
             return None
 
-        device.mode = DeviceMode.MANUAL
-        device.desired_state = payload.is_on
+        try:
+            command_mode = self._to_mode(payload.mode)
+        except ValueError:
+            logger.error("Invalid command mode for device command: %s", payload.mode)
+            return None
+
+        is_scheduler_command = command_mode in {DeviceMode.SCHEDULE, DeviceMode.SCHEDULER}
+        trigger_reason = (
+            DeviceTriggerReason.SCHEDULE_TRIGGER
+            if is_scheduler_command
+            else DeviceTriggerReason.DEVICE_COMMAND
+        )
+        event_type = (
+            DeviceEventType.SCHEDULER
+            if is_scheduler_command
+            else DeviceEventType.STATE
+        )
+
+        device.mode = command_mode
+        device.desired_state = payload.is_on if command_mode == DeviceMode.MANUAL else None
 
         current_state = gpio_manager.read_is_on_by_number(device.device_number)
         if current_state == payload.is_on:
             if not self.sync_device_state_to_config(
                 device_number=device.device_number,
-                mode_override=DeviceMode.MANUAL,
+                mode_override=command_mode,
             ):
                 return None
-            device.desired_state = current_state
+            device.desired_state = (
+                current_state if command_mode == DeviceMode.MANUAL else None
+            )
             return device
 
         changed = gpio_manager.set_state_by_number(
@@ -376,30 +396,32 @@ class GPIOService:
 
         if not self.sync_device_state_to_config(
             device_number=device.device_number,
-            mode_override=DeviceMode.MANUAL,
+            mode_override=command_mode,
         ):
             return None
 
         actual_state = gpio_manager.read_is_on_by_number(device.device_number)
-        device.desired_state = actual_state
+        device.desired_state = (
+            actual_state if command_mode == DeviceMode.MANUAL else None
+        )
 
         backend_adapter.log_device_event(
             device_uuid=device.device_uuid,
             device_id=device.device_id,
             device_number=device.device_number,
-            event_type=DeviceEventType.STATE,
+            event_type=event_type,
             is_on=actual_state,
-            trigger_reason=DeviceTriggerReason.DEVICE_COMMAND,
+            trigger_reason=trigger_reason,
         )
         self._publish_state_change_device_event_async(
             device=device,
             is_on=actual_state,
-            event_type=DeviceEventType.STATE,
-            trigger_reason=DeviceTriggerReason.DEVICE_COMMAND,
+            event_type=event_type,
+            trigger_reason=trigger_reason,
         )
         self._publish_heartbeat_after_state_change_async(
             device_number=device.device_number,
-            trigger_reason=DeviceTriggerReason.DEVICE_COMMAND,
+            trigger_reason=trigger_reason,
         )
 
         return device

@@ -97,6 +97,7 @@ class PowerReadingEvent(BaseEvent):
 
 
 class DeviceCommandPayload(BaseModel):
+    command_id: Optional[str] = None
     device_id: int
     device_number: int
     mode: str
