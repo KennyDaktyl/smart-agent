@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shutil
 import subprocess
 from typing import Any
 
@@ -66,6 +67,12 @@ class MicrocontrollerCommandService:
                 }
 
             if command == MicrocontrollerCommandType.UPDATE_AGENT:
+                validation_error = self._validate_update_prerequisites()
+                if validation_error:
+                    return {
+                        "ok": False,
+                        "message": validation_error,
+                    }
                 return {
                     "ok": True,
                     "message": "Agent update scheduled",
@@ -91,10 +98,12 @@ class MicrocontrollerCommandService:
     async def update_after_ack(self, delay_seconds: float = 0.3) -> None:
         await asyncio.sleep(delay_seconds)
 
-        compose_cmd = ["docker", "compose"]
-        compose_file = (settings.AGENT_SELF_UPDATE_COMPOSE_FILE or "").strip()
-        if compose_file:
-            compose_cmd.extend(["-f", compose_file])
+        compose_cmd, _ = self._build_compose_command()
+        if not compose_cmd:
+            logger.error(
+                "Agent self-update skipped: docker/docker-compose binary not found"
+            )
+            return
 
         service = settings.AGENT_SELF_UPDATE_SERVICE.strip() or "agent"
         cwd = settings.AGENT_SELF_UPDATE_CWD
@@ -115,14 +124,62 @@ class MicrocontrollerCommandService:
         except Exception:
             logger.exception("Agent self-update failed")
 
+    def _validate_update_prerequisites(self) -> str | None:
+        compose_cmd, compose_file = self._build_compose_command()
+        if not compose_cmd:
+            return (
+                "Missing docker CLI in agent container. Install docker/docker-compose "
+                "or mount docker binary."
+            )
+
+        cwd = settings.AGENT_SELF_UPDATE_CWD
+        if not os.path.isdir(cwd):
+            return f"AGENT_SELF_UPDATE_CWD does not exist: {cwd}"
+
+        if compose_file and not os.path.isfile(compose_file):
+            return (
+                "AGENT_SELF_UPDATE_COMPOSE_FILE does not exist: "
+                f"{compose_file}"
+            )
+        if not compose_file and not self._has_default_compose_file(cwd):
+            return (
+                "No compose file found in AGENT_SELF_UPDATE_CWD. "
+                "Expected one of: compose.yml, compose.yaml, "
+                "docker-compose.yml, docker-compose.yaml"
+            )
+
+        return None
+
+    def _build_compose_command(self) -> tuple[list[str] | None, str | None]:
+        compose_file = (settings.AGENT_SELF_UPDATE_COMPOSE_FILE or "").strip() or None
+
+        docker_bin = shutil.which("docker")
+        if docker_bin:
+            command = [docker_bin, "compose"]
+            if compose_file:
+                command.extend(["-f", compose_file])
+            return command, compose_file
+
+        docker_compose_bin = shutil.which("docker-compose")
+        if docker_compose_bin:
+            command = [docker_compose_bin]
+            if compose_file:
+                command.extend(["-f", compose_file])
+            return command, compose_file
+
+        return None, compose_file
+
     def _run_command(self, command: list[str], cwd: str) -> None:
-        result = subprocess.run(
-            command,
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                command,
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(f"Command not found: {command[0]}") from exc
 
         if result.stdout:
             logger.info(
@@ -141,6 +198,17 @@ class MicrocontrollerCommandService:
             raise RuntimeError(
                 f"Command failed ({result.returncode}): {' '.join(command)}"
             )
+
+    def _has_default_compose_file(self, cwd: str) -> bool:
+        candidates = (
+            "compose.yml",
+            "compose.yaml",
+            "docker-compose.yml",
+            "docker-compose.yaml",
+        )
+        return any(
+            os.path.isfile(os.path.join(cwd, file_name)) for file_name in candidates
+        )
 
 
 microcontroller_command_service = MicrocontrollerCommandService()

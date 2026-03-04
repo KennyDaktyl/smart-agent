@@ -32,6 +32,7 @@ async def handle_heartbeat_command(msg):
                 logger.info("Heartbeat started via control command")
 
             case HeartbeatControlAction.RELOAD_HEARTBEAT:
+                await heartbeat_service.start()
                 published = await heartbeat_service.publish_now(
                     trigger=HeartbeatPublishTrigger.RELOAD,
                 )

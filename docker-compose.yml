@@ -1,7 +1,6 @@
 services:
   agent:
     image: ${AGENT_IMAGE:-ghcr.io/michal-pielak/smart-agent}:${AGENT_TAG:-agent_v1.0.0}
-    # image: docker.io/kennydaktyl/smart-agent:agent_v1.0.0
     pull_policy: always
     container_name: smart-agent
     restart: unless-stopped
@@ -13,7 +12,9 @@ services:
       - ./config.json:/app/config.json:rw
       - ./hardware_config.json:/app/hardware_config.json:rw
       - ./logs:/app/logs:rw
+
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
 
     env_file:
       - .env

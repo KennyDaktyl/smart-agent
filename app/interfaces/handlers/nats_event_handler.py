@@ -234,6 +234,7 @@ async def handle_heartbeat_control(payload: dict):
         await heartbeat_service.start()
         logger.info("Heartbeat started via control command")
     elif action == HeartbeatControlAction.RELOAD_HEARTBEAT:
+        await heartbeat_service.start()
         published = await heartbeat_service.publish_now(
             trigger=HeartbeatPublishTrigger.RELOAD,
         )
