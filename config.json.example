@@ -4,11 +4,7 @@
   "provider_uuid": "00000000-0000-0000-0000-000000000000",
   "active_low": false,
 
-  "heartbeat": {
-    "enabled": true,
-    "interval": 60
-  },
-
+  "heartbeat_interval": 60,
   "device_max": 2,
 
   "devices": {
