@@ -38,11 +38,12 @@ COPY --from=deps /usr/local/bin /usr/local/bin
 
 COPY . .
 
-CMD ["python", "-u", "app/main.py"]
+CMD ["python", "-u", "-m", "app.main"]
+
 
 FROM base AS dev
 
 COPY --from=deps /usr/local/lib/python3.11 /usr/local/lib/python3.11
 COPY --from=deps /usr/local/bin /usr/local/bin
 
-CMD ["python", "-u", "app/main.py"]
+CMD ["python", "-u", "-m", "app.main"]

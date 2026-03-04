@@ -21,11 +21,13 @@ class NATSClient:
         logging.info("Connected to NATS & JetStream")
 
         try:
-            await self.js.stream_info("device_communication")
+            await self.js.stream_info(settings.NATS_PREFIX)
             logging.info("Stream device_communication found.")
         except Exception:
             logging.error("Stream device_communication not found!")
-            raise RuntimeError("JetStream stream 'device_communication' must be created by backend.")
+            raise RuntimeError(
+                "JetStream stream 'device_communication' must be created by backend."
+            )
 
     async def ensure_connected(self):
         if not self.nc or not self.nc.is_connected:
@@ -49,7 +51,7 @@ class NATSClient:
         logging.info(f"[NATS] Subscribed to subject: {subject}")
 
         return sub
-    
+
     async def subscribe_js(self, subject: str, handler):
         await self.ensure_connected()
         durable = subject.replace(".", "_")
