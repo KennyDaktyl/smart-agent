@@ -1,0 +1,25 @@
+.git
+.gitignore
+
+# Local env and secrets
+.env
+.env.*
+
+# Runtime/local config mounted as volumes
+config.json
+hardware_config.json
+gpio_mapping.json
+*.example.json
+
+# Local runtime data
+logs/
+env/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Docker/dev metadata not needed in image
+docker-compose*.yml
+instal.txt
+test_nats.txt
