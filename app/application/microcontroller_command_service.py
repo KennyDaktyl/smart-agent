@@ -5,6 +5,7 @@ from typing import Any
 
 from app.domain.events.enums import MicrocontrollerCommandType
 from app.infrastructure.config.domain_config_repository import domain_config_repository
+from app.infrastructure.config.env_file_repository import env_file_repository
 from app.infrastructure.config.hardware_config_repository import (
     hardware_config_repository,
 )
@@ -19,6 +20,7 @@ class MicrocontrollerCommandService:
         command: MicrocontrollerCommandType,
         config_json: dict[str, Any] | None = None,
         hardware_config_json: dict[str, Any] | None = None,
+        env_file_content: str | None = None,
     ) -> dict[str, Any]:
         try:
             if command == MicrocontrollerCommandType.READ_CONFIG_FILES:
@@ -26,23 +28,29 @@ class MicrocontrollerCommandService:
                     "ok": True,
                     "config_json": domain_config_repository.export_json(),
                     "hardware_config_json": hardware_config_repository.export_json(),
+                    "env_file_content": env_file_repository.read(),
                 }
 
             if command == MicrocontrollerCommandType.WRITE_CONFIG_FILES:
                 if not isinstance(config_json, dict) or not isinstance(
                     hardware_config_json,
                     dict,
+                ) or not isinstance(
+                    env_file_content,
+                    str,
                 ):
                     return {
                         "ok": False,
                         "message": (
-                            "Both config_json and hardware_config_json are required "
+                            "config_json, hardware_config_json and env_file_content "
+                            "are required "
                             "for WRITE_CONFIG_FILES command"
                         ),
                     }
 
                 domain_config_repository.replace_from_json(config_json)
                 hardware_config_repository.replace_from_json(hardware_config_json)
+                env_file_repository.write(env_file_content)
                 return {
                     "ok": True,
                     "message": "Configuration files saved",

@@ -10,6 +10,7 @@ services:
     network_mode: host
 
     volumes:
+      - ./.env:/app/.env:rw
       - ./config.json:/app/config.json:rw
       - ./gpio_mapping.json:/app/gpio_mapping.json:rw
       - ./logs:/app/logs:rw

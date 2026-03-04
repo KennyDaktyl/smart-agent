@@ -403,6 +403,10 @@ async def send_microcontroller_command_ack(
     if isinstance(hardware_config_json, dict):
         payload_data["hardware_config_json"] = hardware_config_json
 
+    env_file_content = result.get("env_file_content")
+    if isinstance(env_file_content, str):
+        payload_data["env_file_content"] = env_file_content
+
     ack_payload = {"data": payload_data}
     await nats_client.publish_raw(ack_subject, ack_payload)
     logger.info("ACK SENT | subject=%s", ack_subject)

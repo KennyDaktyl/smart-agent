@@ -113,6 +113,7 @@ class EventService:
             command=event.data.command,
             config_json=event.data.config_json,
             hardware_config_json=event.data.hardware_config_json,
+            env_file_content=event.data.env_file_content,
         )
 
 

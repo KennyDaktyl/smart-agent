@@ -9,6 +9,7 @@ services:
     network_mode: host
 
     volumes:
+      - ./.env:/app/.env:rw
       - ./config.json:/app/config.json:rw
       - ./hardware_config.json:/app/hardware_config.json:rw
       - ./logs:/app/logs:rw

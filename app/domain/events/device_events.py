@@ -113,6 +113,7 @@ class MicrocontrollerCommandPayload(BaseModel):
     command: MicrocontrollerCommandType
     config_json: Optional[Dict[str, Any]] = None
     hardware_config_json: Optional[Dict[str, Any]] = None
+    env_file_content: Optional[str] = None
 
 
 class MicrocontrollerCommandEvent(BaseEvent):
