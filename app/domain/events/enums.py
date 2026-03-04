@@ -7,6 +7,7 @@ class EventType(str, Enum):
     DEVICE_DELETED = "DEVICE_DELETED"
     CURRENT_ENERGY = "CURRENT_ENERGY"
     DEVICE_COMMAND = "DEVICE_COMMAND"
+    MICROCONTROLLER_COMMAND = "MICROCONTROLLER_COMMAND"
     PROVIDER_UPDATED = "PROVIDER_UPDATED"
     UPDATE_REQUEST = "UPDATE_REQUEST"
     HEARTBEAT = "HEARTBEAT"
@@ -20,3 +21,9 @@ class HeartbeatControlAction(str, Enum):
 
 class HeartbeatStatus(str, Enum):
     ONLINE = "online"
+
+
+class MicrocontrollerCommandType(str, Enum):
+    READ_CONFIG_FILES = "READ_CONFIG_FILES"
+    WRITE_CONFIG_FILES = "WRITE_CONFIG_FILES"
+    REBOOT_AGENT = "REBOOT_AGENT"

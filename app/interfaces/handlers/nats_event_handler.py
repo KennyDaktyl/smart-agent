@@ -1,6 +1,10 @@
+import asyncio
 import json
 import logging
 
+from app.application.microcontroller_command_service import (
+    microcontroller_command_service,
+)
 from pydantic import ValidationError
 
 from app.application.event_service import event_service
@@ -11,12 +15,13 @@ from app.domain.events.device_events import (
     DeviceCommandEvent,
     DeviceCreatedEvent,
     DeviceDeletedEvent,
+    MicrocontrollerCommandEvent,
     DeviceUpdatedEvent,
     EventType,
     ProviderUpdatedEvent,
     PowerReadingEvent,
 )
-from app.domain.events.enums import HeartbeatControlAction
+from app.domain.events.enums import HeartbeatControlAction, MicrocontrollerCommandType
 from app.domain.gpio.runtime_device import RuntimeDevice
 from app.infrastructure.config.domain_config_repository import domain_config_repository
 from app.infrastructure.gpio.gpio_manager import gpio_manager
@@ -120,6 +125,23 @@ async def nats_event_handler(msg):
                 device_number=device_number,
                 command_id=event.data.command_id or command_id,
             )
+            return
+
+        if isinstance(event, MicrocontrollerCommandEvent):
+            result_payload = result if isinstance(result, dict) else {}
+            ok = bool(result_payload.get("ok"))
+
+            await send_microcontroller_command_ack(
+                ack_subject=ack_subject,
+                ok=ok,
+                command=event.data.command,
+                command_id=event.data.command_id or command_id,
+                result=result_payload,
+            )
+
+            if ok and event.data.command == MicrocontrollerCommandType.REBOOT_AGENT:
+                asyncio.create_task(microcontroller_command_service.reboot_after_ack())
+
             return
 
         # All other events → simple ACK
@@ -239,6 +261,8 @@ def parse_device_event(event_type: str, raw: dict):
             return DeviceDeletedEvent(**raw)
         case EventType.DEVICE_COMMAND:
             return DeviceCommandEvent(**raw)
+        case EventType.MICROCONTROLLER_COMMAND:
+            return MicrocontrollerCommandEvent(**raw)
         case EventType.CURRENT_ENERGY:
             return PowerReadingEvent(**raw)
         case EventType.PROVIDER_UPDATED:
@@ -349,6 +373,38 @@ async def send_provider_update_ack(
 
     await nats_client.publish_raw(ack_subject, ack_payload)
 
+    logger.info("ACK SENT | subject=%s", ack_subject)
+
+
+async def send_microcontroller_command_ack(
+    ack_subject: str,
+    ok: bool,
+    command: MicrocontrollerCommandType,
+    command_id: str | None,
+    result: dict,
+):
+    payload_data = {
+        "ok": ok,
+        "command": command.value,
+    }
+
+    if command_id:
+        payload_data["command_id"] = command_id
+
+    message = result.get("message")
+    if isinstance(message, str) and message:
+        payload_data["message"] = message
+
+    config_json = result.get("config_json")
+    if isinstance(config_json, dict):
+        payload_data["config_json"] = config_json
+
+    hardware_config_json = result.get("hardware_config_json")
+    if isinstance(hardware_config_json, dict):
+        payload_data["hardware_config_json"] = hardware_config_json
+
+    ack_payload = {"data": payload_data}
+    await nats_client.publish_raw(ack_subject, ack_payload)
     logger.info("ACK SENT | subject=%s", ack_subject)
 
 

@@ -3,12 +3,16 @@ import logging
 from typing import Union
 
 from app.application.gpio_service import gpio_service
+from app.application.microcontroller_command_service import (
+    microcontroller_command_service,
+)
 from app.application.power_reading_service import power_reading_service
 from app.application.provider_service import provider_service
 from app.domain.events.device_events import (
     DeviceCommandEvent,
     DeviceCreatedEvent,
     DeviceDeletedEvent,
+    MicrocontrollerCommandEvent,
     DeviceUpdatedEvent,
     EventType,
     ProviderUpdatedEvent,
@@ -24,6 +28,7 @@ AnyEvent = Union[
     PowerReadingEvent,
     DeviceCommandEvent,
     ProviderUpdatedEvent,
+    MicrocontrollerCommandEvent,
 ]
 
 
@@ -49,6 +54,9 @@ class EventService:
 
             case EventType.DEVICE_COMMAND:
                 return await self._handle_device_command(event)
+
+            case EventType.MICROCONTROLLER_COMMAND:
+                return await self._handle_microcontroller_command(event)
 
             case EventType.PROVIDER_UPDATED:
                 return await self._handle_provider_updated(event)
@@ -98,6 +106,14 @@ class EventService:
             event.data.provider_uuid,
         )
         return await provider_service.update_provider_uuid(event.data.provider_uuid)
+
+    async def _handle_microcontroller_command(self, event: MicrocontrollerCommandEvent):
+        logging.info("Executing microcontroller command -> %s", event.data.command)
+        return await microcontroller_command_service.handle_command(
+            command=event.data.command,
+            config_json=event.data.config_json,
+            hardware_config_json=event.data.hardware_config_json,
+        )
 
 
 event_service = EventService()

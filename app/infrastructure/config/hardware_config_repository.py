@@ -2,7 +2,7 @@ import errno
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.core.config import settings
 from app.core.logging_config import logger
@@ -91,6 +91,21 @@ class HardwareConfigRepository:
     def reload(self) -> HardwareConfig:
         self._config = None
         return self.load()
+
+    def export_json(self) -> dict[str, Any]:
+        config = self.reload()
+        data = config.model_dump(mode="json")
+        data["devices"] = {str(k): v for k, v in data["devices"].items()}
+        return data
+
+    def replace_from_json(self, raw: dict[str, Any]) -> HardwareConfig:
+        normalized = dict(raw)
+        devices = normalized.get("devices")
+        if isinstance(devices, dict):
+            normalized["devices"] = {int(k): v for k, v in devices.items()}
+        self._config = HardwareConfig.model_validate(normalized)
+        self.save()
+        return self._config
 
 
 hardware_config_repository = HardwareConfigRepository()

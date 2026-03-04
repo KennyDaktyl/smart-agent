@@ -7,6 +7,7 @@ from typing import Any, Optional
 from app.core.config import settings
 from app.core.logging_config import logger
 from app.domain.models.agent_config import AgentConfig, DeviceMode
+from app.infrastructure.gpio.gpio_manager import gpio_manager
 
 
 class DomainConfigRepository:
@@ -132,7 +133,6 @@ class DomainConfigRepository:
         data = self._config.model_dump()
 
         data["devices"] = {str(k): v for k, v in data["devices"].items()}
-        from app.infrastructure.gpio.gpio_manager import gpio_manager
 
         for key, device in data["devices"].items():
             device_number = int(key)
@@ -192,6 +192,21 @@ class DomainConfigRepository:
     def reload(self) -> AgentConfig:
         self._config = None
         return self.load()
+
+    def export_json(self) -> dict[str, Any]:
+        config = self.reload()
+        data = config.model_dump(mode="json")
+        data["devices"] = {str(k): v for k, v in data["devices"].items()}
+        return data
+
+    def replace_from_json(self, raw: dict[str, Any]) -> AgentConfig:
+        normalized = self._normalize_legacy_fields(raw)
+        normalized = self._normalize_heartbeat(normalized)
+        if "devices" in normalized:
+            normalized["devices"] = self._normalize_devices(normalized["devices"])
+        self._config = AgentConfig.model_validate(normalized)
+        self.save()
+        return self._config
 
 
 domain_config_repository = DomainConfigRepository()

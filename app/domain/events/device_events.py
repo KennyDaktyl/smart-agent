@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 
-from app.domain.events.enums import EventType
+from app.domain.events.enums import EventType, MicrocontrollerCommandType
 
 
 class BaseEvent(BaseModel):
@@ -106,6 +106,17 @@ class DeviceCommandPayload(BaseModel):
 
 class DeviceCommandEvent(BaseEvent):
     data: DeviceCommandPayload
+
+
+class MicrocontrollerCommandPayload(BaseModel):
+    command_id: Optional[str] = None
+    command: MicrocontrollerCommandType
+    config_json: Optional[Dict[str, Any]] = None
+    hardware_config_json: Optional[Dict[str, Any]] = None
+
+
+class MicrocontrollerCommandEvent(BaseEvent):
+    data: MicrocontrollerCommandPayload
 
 
 class ProviderUpdatedPayload(BaseModel):
