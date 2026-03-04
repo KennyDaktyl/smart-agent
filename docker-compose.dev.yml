@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: dev
-    container_name: smart_energy_agent_dev
+    container_name: smart-agent-dev
     restart: unless-stopped
     privileged: true
     network_mode: host

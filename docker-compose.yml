@@ -1,10 +1,9 @@
 services:
   agent:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: prod
-    container_name: smart_energy_agent
+    image: ${AGENT_IMAGE:-ghcr.io/michal-pielak/smart-agent}:${AGENT_TAG:-agent_v1.0.0}
+    # image: docker.io/kennydaktyl/smart-agent:agent_v1.0.0
+    pull_policy: always
+    container_name: smart-agent
     restart: unless-stopped
     privileged: true
     network_mode: host
