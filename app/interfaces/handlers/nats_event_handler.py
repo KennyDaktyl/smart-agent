@@ -141,6 +141,8 @@ async def nats_event_handler(msg):
 
             if ok and event.data.command == MicrocontrollerCommandType.REBOOT_AGENT:
                 asyncio.create_task(microcontroller_command_service.reboot_after_ack())
+            if ok and event.data.command == MicrocontrollerCommandType.UPDATE_AGENT:
+                asyncio.create_task(microcontroller_command_service.update_after_ack())
 
             return
 

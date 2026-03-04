@@ -19,6 +19,11 @@ RUN apt-get update && \
         else \
             echo "GPIO apt packages not available for $TARGETARCH, continuing without them"; \
         fi; \
+        if apt-get install -y --no-install-recommends cargo rustc; then \
+            echo "Installed Rust toolchain for $TARGETARCH (pydantic-core build support)"; \
+        else \
+            echo "Rust apt packages not available for $TARGETARCH, continuing without them"; \
+        fi; \
     else \
         echo "Skipping Raspberry Pi GPIO packages for $TARGETARCH"; \
     fi && \
@@ -28,8 +33,9 @@ FROM base AS deps
 
 COPY requirements.txt .
 
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+RUN printf "maturin==1.5.1\n" > /tmp/pip-constraints.txt && \
+    PIP_CONSTRAINT=/tmp/pip-constraints.txt pip install --upgrade pip && \
+    PIP_CONSTRAINT=/tmp/pip-constraints.txt pip install -r requirements.txt
 
 FROM base AS prod
 

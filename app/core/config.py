@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     NATS_URL: str = Field(..., env="NATS_URL")
     NATS_PREFIX: str = Field("device_communication", env="NATS_PREFIX")
 
+    # ===== AGENT SELF UPDATE =====
+    AGENT_SELF_UPDATE_CWD: str = Field("/app", env="AGENT_SELF_UPDATE_CWD")
+    AGENT_SELF_UPDATE_SERVICE: str = Field("agent", env="AGENT_SELF_UPDATE_SERVICE")
+    AGENT_SELF_UPDATE_COMPOSE_FILE: str | None = Field(
+        None,
+        env="AGENT_SELF_UPDATE_COMPOSE_FILE",
+    )
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

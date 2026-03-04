@@ -13,6 +13,7 @@ services:
       - ./config.json:/app/config.json:rw
       - ./hardware_config.json:/app/hardware_config.json:rw
       - ./logs:/app/logs:rw
+      - /var/run/docker.sock:/var/run/docker.sock
 
     env_file:
       - .env
