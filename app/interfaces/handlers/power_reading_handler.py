@@ -4,9 +4,9 @@ import logging
 
 from pydantic import ValidationError
 
+from app.application.event_service import event_service
+from app.domain.events.device_events import PowerReadingEvent
 from app.domain.events.enums import EventType
-from app.domain.events.inverter_events import InverterProductionEvent
-from app.application.power_reading_service import power_reading_service
 
 logging = logging.getLogger(__name__)
 
@@ -16,13 +16,13 @@ async def inverter_production_handler(msg):
         raw = json.loads(msg.data.decode())
         logging.info(f"Inverter production event received: {raw}")
 
-        event = InverterProductionEvent(**raw)
+        event = PowerReadingEvent(**raw)
 
         if event.event_type != EventType.CURRENT_ENERGY:
             logging.warning(f"Ignoring inverter event type={event.event_type}")
             return
 
-        await power_reading_service.handle_inverter_power(event)
+        await event_service.handle_event(event)
 
     except ValidationError as e:
         logging.error(
