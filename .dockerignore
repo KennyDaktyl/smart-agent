@@ -23,3 +23,5 @@ __pycache__/
 docker-compose*.yml
 instal.txt
 test_nats.txt
+hardware_config.json
+config.json

@@ -209,5 +209,6 @@ __marimo__/
 logs/
 config.json
 gpio_mapping.json
+hardware_config.json
 
 .vscode/
