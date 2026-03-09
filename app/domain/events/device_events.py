@@ -124,6 +124,7 @@ class ProviderUpdatedPayload(BaseModel):
     provider_uuid: str = Field(
         validation_alias=AliasChoices("provider_uuid", "new_provider_uuid")
     )
+    unit: Optional[str] = None
 
     @field_validator("provider_uuid")
     @classmethod
@@ -132,6 +133,14 @@ class ProviderUpdatedPayload(BaseModel):
         if not normalized:
             raise ValueError("provider_uuid must not be empty")
         return normalized
+
+    @field_validator("unit")
+    @classmethod
+    def validate_unit(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class ProviderUpdatedEvent(BaseEvent):

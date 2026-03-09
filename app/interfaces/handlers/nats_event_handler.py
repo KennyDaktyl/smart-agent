@@ -345,6 +345,8 @@ async def send_provider_update_ack(
     microcontroller_uuid = ""
     previous_provider_uuid = ""
     provider_uuid = ""
+    previous_unit = None
+    unit = None
     changed = False
     ok = False
 
@@ -354,6 +356,8 @@ async def send_provider_update_ack(
         microcontroller_uuid = result.microcontroller_uuid
         previous_provider_uuid = result.previous_provider_uuid
         provider_uuid = result.provider_uuid
+        previous_unit = result.previous_unit
+        unit = result.unit
     else:
         ok = bool(result)
         try:
@@ -361,6 +365,8 @@ async def send_provider_update_ack(
             microcontroller_uuid = config.microcontroller_uuid
             provider_uuid = config.provider_uuid
             previous_provider_uuid = config.provider_uuid
+            previous_unit = config.unit
+            unit = config.unit
         except Exception:
             logger.exception("Failed to load config for provider update ACK")
 
@@ -371,6 +377,8 @@ async def send_provider_update_ack(
             "microcontroller_uuid": microcontroller_uuid,
             "previous_provider_uuid": previous_provider_uuid,
             "provider_uuid": provider_uuid,
+            "previous_unit": previous_unit,
+            "unit": unit,
         }
     }
 

@@ -102,10 +102,14 @@ class EventService:
 
     async def _handle_provider_updated(self, event: ProviderUpdatedEvent):
         logging.info(
-            "Updating provider UUID -> provider_uuid=%s",
+            "Updating provider config -> provider_uuid=%s unit=%s",
             event.data.provider_uuid,
+            event.data.unit,
         )
-        return await provider_service.update_provider_uuid(event.data.provider_uuid)
+        return await provider_service.update_provider_uuid(
+            event.data.provider_uuid,
+            event.data.unit,
+        )
 
     async def _handle_microcontroller_command(self, event: MicrocontrollerCommandEvent):
         logging.info("Executing microcontroller command -> %s", event.data.command)

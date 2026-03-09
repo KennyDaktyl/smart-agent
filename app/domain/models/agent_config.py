@@ -40,6 +40,7 @@ class AgentConfig(BaseModel):
     config_version: int = 2
     microcontroller_uuid: str
     provider_uuid: str
+    unit: Optional[str] = None
     heartbeat_interval: int = 60
     device_max: int = 1
     devices: Dict[int, DeviceConfig] = Field(default_factory=dict)
@@ -65,6 +66,14 @@ class AgentConfig(BaseModel):
         if not normalized:
             raise ValueError("provider_uuid must not be empty")
         return normalized
+
+    @field_validator("unit")
+    @classmethod
+    def validate_unit(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
     @model_validator(mode="after")
     def validate_devices_mapping(self):

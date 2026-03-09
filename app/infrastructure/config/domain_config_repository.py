@@ -129,9 +129,19 @@ class DomainConfigRepository:
             raise RuntimeError("Cannot save before load()")
 
         tmp_path = self._config_path.with_suffix(".tmp")
+        data = self._dump_with_runtime_state(mode="python")
 
-        data = self._config.model_dump()
+        self._write_json_with_fallback(data=data, tmp_path=tmp_path)
 
+    def _dump_with_runtime_state(
+        self,
+        *,
+        mode: str = "python",
+    ) -> dict[str, Any]:
+        if self._config is None:
+            raise RuntimeError("Cannot dump before load()")
+
+        data = self._config.model_dump(mode=mode)
         data["devices"] = {str(k): v for k, v in data["devices"].items()}
 
         for key, device in data["devices"].items():
@@ -146,7 +156,7 @@ class DomainConfigRepository:
             else:
                 device["is_on"] = False
 
-        self._write_json_with_fallback(data=data, tmp_path=tmp_path)
+        return data
 
     def _write_json_with_fallback(self, *, data: dict, tmp_path: Path) -> None:
         with tmp_path.open("w", encoding="utf-8") as f:
@@ -194,10 +204,8 @@ class DomainConfigRepository:
         return self.load()
 
     def export_json(self) -> dict[str, Any]:
-        config = self.reload()
-        data = config.model_dump(mode="json")
-        data["devices"] = {str(k): v for k, v in data["devices"].items()}
-        return data
+        self.reload()
+        return self._dump_with_runtime_state(mode="json")
 
     def replace_from_json(self, raw: dict[str, Any]) -> AgentConfig:
         normalized = self._normalize_legacy_fields(raw)

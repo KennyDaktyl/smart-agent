@@ -2,6 +2,7 @@
   "config_version": 2,
   "microcontroller_uuid": "00000000-0000-0000-0000-000000000000",
   "provider_uuid": "00000000-0000-0000-0000-000000000000",
+  "unit": "kW",
   "active_low": false,
 
   "heartbeat_interval": 60,
