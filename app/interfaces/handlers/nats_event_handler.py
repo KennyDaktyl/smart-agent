@@ -347,6 +347,8 @@ async def send_provider_update_ack(
     provider_uuid = ""
     previous_unit = None
     unit = None
+    has_power_meter = False
+    has_energy_storage = False
     changed = False
     ok = False
 
@@ -358,6 +360,8 @@ async def send_provider_update_ack(
         provider_uuid = result.provider_uuid
         previous_unit = result.previous_unit
         unit = result.unit
+        has_power_meter = result.has_power_meter
+        has_energy_storage = result.has_energy_storage
     else:
         ok = bool(result)
         try:
@@ -367,6 +371,8 @@ async def send_provider_update_ack(
             previous_provider_uuid = config.provider_uuid
             previous_unit = config.unit
             unit = config.unit
+            has_power_meter = bool(config.provider_has_power_meter)
+            has_energy_storage = bool(config.provider_has_energy_storage)
         except Exception:
             logger.exception("Failed to load config for provider update ACK")
 
@@ -379,6 +385,8 @@ async def send_provider_update_ack(
             "provider_uuid": provider_uuid,
             "previous_unit": previous_unit,
             "unit": unit,
+            "has_power_meter": has_power_meter,
+            "has_energy_storage": has_energy_storage,
         }
     }
 

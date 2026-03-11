@@ -12,9 +12,11 @@ services:
     volumes:
       - ./.env:/app/.env:rw
       - ./config.json:/app/config.json:rw
-      - ./gpio_mapping.json:/app/gpio_mapping.json:rw
+      - ./hardware_config.json:/app/hardware_config.json:rw
       - ./logs:/app/logs:rw
+
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
 
     environment:
       LOG_DIR: /app/logs

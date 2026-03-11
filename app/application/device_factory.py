@@ -57,6 +57,8 @@ def merge_configs(
                 active_low=hw.active_low,
                 mode=domain_device.mode,
                 threshold_value=domain_device.threshold_value,
+                threshold_unit=domain_device.threshold_unit,
+                auto_rule=domain_device.auto_rule,
                 rated_power=domain_device.rated_power,
                 desired_state=domain_device.desired_state,
             )

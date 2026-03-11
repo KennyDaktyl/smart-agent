@@ -7,16 +7,27 @@ from app.core.heartbeat_service import (
     HeartbeatPublishTrigger,
     heartbeat_service,
 )
+from app.domain.automation_rule import (
+    AutomationRuleGroup,
+    AutomationRuleSource,
+    MetricSnapshot,
+    build_legacy_power_rule,
+    evaluate_rule,
+    iter_conditions,
+)
+from app.domain.events.device_events import PowerReadingPayload
 from app.domain.gpio.runtime_device import RuntimeDevice
-from app.domain.models.agent_config import DeviceMode
+from app.domain.models.agent_config import AgentConfig, DeviceMode
 from app.infrastructure.backend.backend_adapter import (
     DeviceEventType,
     DeviceTriggerReason,
     backend_adapter,
 )
+from app.infrastructure.config.domain_config_repository import domain_config_repository
 from app.infrastructure.gpio.gpio_manager import gpio_manager
 
 logging = logging.getLogger(__name__)
+BATTERY_SOC_METRIC_KEY = "battery_soc"
 
 
 class PowerReadingService:
@@ -114,95 +125,153 @@ class PowerReadingService:
                 trigger_reason.value,
             )
 
-    async def handle_power(
+    def _resolve_auto_rule(self, device: RuntimeDevice) -> AutomationRuleGroup | None:
+        if device.auto_rule is not None:
+            return device.auto_rule
+        if device.threshold_value is None:
+            return None
+
+        return build_legacy_power_rule(
+            value=float(device.threshold_value),
+            unit=device.threshold_unit or "W",
+        )
+
+    @staticmethod
+    def _normalize_unit(value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            value = str(value)
+        normalized = value.strip()
+        return normalized or None
+
+    def _extract_extra_metric(
+        self,
+        payload: PowerReadingPayload,
+        metric_key: str,
+    ) -> MetricSnapshot | None:
+        for metric in payload.extra_metrics or []:
+            if not isinstance(metric, dict):
+                continue
+            current_key = metric.get("key")
+            if current_key is None:
+                current_key = metric.get("metric_key")
+            if current_key != metric_key:
+                continue
+            value = metric.get("value")
+            if value is None:
+                return None
+            try:
+                return MetricSnapshot(
+                    value=float(value),
+                    unit=self._normalize_unit(metric.get("unit")),
+                )
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def _build_measurements(
+        self,
+        payload: PowerReadingPayload,
+    ) -> dict[AutomationRuleSource, MetricSnapshot | None]:
+        battery_metric = None
+        if payload.battery_soc and payload.battery_soc.value is not None:
+            battery_metric = MetricSnapshot(
+                value=float(payload.battery_soc.value),
+                unit=self._normalize_unit(payload.battery_soc.unit) or "%",
+            )
+        if battery_metric is None:
+            battery_metric = self._extract_extra_metric(payload, BATTERY_SOC_METRIC_KEY)
+
+        primary_power_metric = None
+        if payload.value is not None:
+            primary_power_metric = MetricSnapshot(
+                value=float(payload.value),
+                unit=self._normalize_unit(payload.unit),
+            )
+
+        return {
+            AutomationRuleSource.PROVIDER_PRIMARY_POWER: primary_power_metric,
+            AutomationRuleSource.PROVIDER_BATTERY_SOC: battery_metric,
+        }
+
+    def _has_missing_required_metrics(
         self,
         *,
-        value: Optional[float],
+        rule: AutomationRuleGroup,
+        measurements: dict[AutomationRuleSource, MetricSnapshot | None],
+        config: AgentConfig,
+    ) -> bool:
+        for condition in iter_conditions(rule):
+            if (
+                condition.source == AutomationRuleSource.PROVIDER_BATTERY_SOC
+                and not config.provider_has_energy_storage
+            ):
+                return True
+            if measurements.get(condition.source) is None:
+                return True
+        return False
+
+    async def handle_power(
+        self,
+        payload: PowerReadingPayload,
     ) -> None:
-        logging.info("Received provider current power value=%s", value)
+        logging.info(
+            "Received provider telemetry value=%s unit=%s battery_soc=%s",
+            payload.value,
+            payload.unit,
+            payload.battery_soc.value if payload.battery_soc else None,
+        )
 
         auto_devices = self._get_auto_power_devices()
         if not auto_devices:
             logging.info("No AUTO devices. Nothing to do.")
             return
 
-        power_value = value
-
-        if power_value is None:
-            logging.warning(
-                "Active power missing. Forcing all AUTO devices OFF for safety."
-            )
-            for device in auto_devices:
-                current_is_on = gpio_manager.read_is_on_by_number(device.device_number)
-                if not current_is_on:
-                    logging.info(
-                        "Skipping POWER_MISSING event for device_number=%s "
-                        "(already OFF)",
-                        device.device_number,
-                    )
-                    continue
-
-                changed = gpio_manager.set_state_by_number(
-                    device.device_number,
-                    False,
-                )
-                if not changed:
-                    logging.error(
-                        "Failed to force OFF device_number=%s due to missing power",
-                        device.device_number,
-                    )
-                    self._log_backend_event(
-                        device=device,
-                        is_on=gpio_manager.read_is_on_by_number(device.device_number),
-                        event_type=DeviceEventType.ERROR,
-                        trigger_reason=DeviceTriggerReason.STATE_CHANGE_FAILED,
-                        power_value=power_value,
-                    )
-                    continue
-
-                self._sync_state_or_log_error(
-                    device=device,
-                    is_on=False,
-                    power_value=power_value,
-                )
-                self._log_backend_event(
-                    device=device,
-                    is_on=False,
-                    event_type=DeviceEventType.ERROR,
-                    trigger_reason=DeviceTriggerReason.POWER_MISSING,
-                    power_value=power_value,
-                )
-                await self._publish_state_change_device_event(
-                    device=device,
-                    is_on=False,
-                    event_type=DeviceEventType.ERROR,
-                    trigger_reason=DeviceTriggerReason.POWER_MISSING,
-                    power_value=power_value,
-                )
-                await self._publish_heartbeat_after_state_change(
-                    device=device,
-                    trigger_reason=DeviceTriggerReason.POWER_MISSING,
-                )
-            return
+        domain_config = domain_config_repository.load()
+        measurements = self._build_measurements(payload)
+        if not domain_config.provider_has_energy_storage:
+            measurements[AutomationRuleSource.PROVIDER_BATTERY_SOC] = None
+        power_value = payload.value
+        battery_value = (
+            measurements[AutomationRuleSource.PROVIDER_BATTERY_SOC].value
+            if measurements.get(AutomationRuleSource.PROVIDER_BATTERY_SOC) is not None
+            else None
+        )
 
         for device in auto_devices:
-            threshold = device.threshold_value
-            if threshold is None:
+            rule = self._resolve_auto_rule(device)
+            if rule is None:
                 logging.error(
-                    f"Device {device.device_number} has AUTO mode but no threshold_value."
+                    "Device %s has AUTO mode but no threshold_value or auto_rule.",
+                    device.device_number,
                 )
                 continue
 
-            should_turn_on = power_value >= threshold
+            if (
+                not domain_config.provider_has_energy_storage
+                and any(
+                    condition.source == AutomationRuleSource.PROVIDER_BATTERY_SOC
+                    for condition in iter_conditions(rule)
+                )
+            ):
+                logging.warning(
+                    "AUTO rule references provider_battery_soc but provider does not "
+                    "support energy storage | device_number=%s",
+                    device.device_number,
+                )
+
+            should_turn_on = evaluate_rule(rule, measurements)
             current_is_on = gpio_manager.read_is_on_by_number(device.device_number)
 
             logging.info(
-                "AUTO device_number=%s threshold=%s current=%s target=%s power_value=%s",
+                "AUTO device_number=%s current=%s target=%s power_value=%s "
+                "battery_soc=%s",
                 device.device_number,
-                threshold,
                 current_is_on,
                 should_turn_on,
                 power_value,
+                battery_value,
             )
 
             if current_is_on == should_turn_on:
@@ -233,23 +302,36 @@ class PowerReadingService:
                 power_value=power_value,
             )
 
+            trigger_reason = DeviceTriggerReason.AUTO_TRIGGER
+            event_type = DeviceEventType.AUTO_TRIGGER
+            if (
+                not should_turn_on
+                and self._has_missing_required_metrics(
+                    rule=rule,
+                    measurements=measurements,
+                    config=domain_config,
+                )
+            ):
+                trigger_reason = DeviceTriggerReason.POWER_MISSING
+                event_type = DeviceEventType.ERROR
+
             self._log_backend_event(
                 device=device,
                 is_on=should_turn_on,
-                event_type=DeviceEventType.AUTO_TRIGGER,
-                trigger_reason=DeviceTriggerReason.AUTO_TRIGGER,
+                event_type=event_type,
+                trigger_reason=trigger_reason,
                 power_value=power_value,
             )
             await self._publish_state_change_device_event(
                 device=device,
                 is_on=should_turn_on,
-                event_type=DeviceEventType.AUTO_TRIGGER,
-                trigger_reason=DeviceTriggerReason.AUTO_TRIGGER,
+                event_type=event_type,
+                trigger_reason=trigger_reason,
                 power_value=power_value,
             )
             await self._publish_heartbeat_after_state_change(
                 device=device,
-                trigger_reason=DeviceTriggerReason.AUTO_TRIGGER,
+                trigger_reason=trigger_reason,
             )
 
 

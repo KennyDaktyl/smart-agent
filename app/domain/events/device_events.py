@@ -1,11 +1,14 @@
 from typing import Any, Dict, Optional
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
+from app.domain.automation_rule import AutomationRuleGroup
 from app.domain.events.enums import EventType, MicrocontrollerCommandType
 
 
 class BaseEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     event_type: EventType
     event_id: str
     source: str
@@ -22,6 +25,8 @@ class DeviceCreatedPayload(BaseModel):
     mode: str
     rated_power: Optional[float] = None
     threshold_value: Optional[float] = None
+    threshold_unit: Optional[str] = None
+    auto_rule: Optional[AutomationRuleGroup] = None
     is_on: bool = Field(
         default=False,
         validation_alias=AliasChoices("is_on", "manual_state", "desired_state"),
@@ -57,6 +62,8 @@ class DeviceUpdatedPayload(BaseModel):
         default=None,
         validation_alias=AliasChoices("threshold_value", "threshold_kw"),
     )
+    threshold_unit: Optional[str] = None
+    auto_rule: Optional[AutomationRuleGroup] = None
 
     @field_validator("device_uuid")
     @classmethod
@@ -82,7 +89,16 @@ class DeviceDeletedEvent(BaseEvent):
     data: DeviceDeletePayload
 
 
+class MetricSnapshotPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    value: Optional[float] = None
+    unit: Optional[str] = None
+
+
 class PowerReadingPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     value: Optional[float] = Field(
         default=None,
         validation_alias=AliasChoices("value", "power_w", "active_power"),
@@ -90,6 +106,9 @@ class PowerReadingPayload(BaseModel):
     unit: Optional[str] = None
     measured_at: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    extra_metrics: Optional[list[Dict[str, Any]]] = None
+    battery_soc: Optional[MetricSnapshotPayload] = None
+    grid_power: Optional[MetricSnapshotPayload] = None
 
 
 class PowerReadingEvent(BaseEvent):
@@ -125,6 +144,8 @@ class ProviderUpdatedPayload(BaseModel):
         validation_alias=AliasChoices("provider_uuid", "new_provider_uuid")
     )
     unit: Optional[str] = None
+    has_power_meter: Optional[bool] = None
+    has_energy_storage: Optional[bool] = None
 
     @field_validator("provider_uuid")
     @classmethod

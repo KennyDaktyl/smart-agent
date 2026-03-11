@@ -67,6 +67,12 @@ class DomainConfigRepository:
 
         normalized = dict(raw)
         if "heartbeat_interval" in normalized:
+            normalized["provider_has_power_meter"] = bool(
+                normalized.get("provider_has_power_meter", False)
+            )
+            normalized["provider_has_energy_storage"] = bool(
+                normalized.get("provider_has_energy_storage", False)
+            )
             return normalized
 
         heartbeat = normalized.get("heartbeat")
@@ -76,7 +82,12 @@ class DomainConfigRepository:
                 "Legacy 'heartbeat.interval' detected in config. "
                 "Using it as 'heartbeat_interval'."
             )
-            return normalized
+        normalized["provider_has_power_meter"] = bool(
+            normalized.get("provider_has_power_meter", False)
+        )
+        normalized["provider_has_energy_storage"] = bool(
+            normalized.get("provider_has_energy_storage", False)
+        )
 
         return normalized
 
@@ -102,6 +113,8 @@ class DomainConfigRepository:
                     payload["threshold_value"] = payload.pop("threshold_kw")
 
             payload.pop("threshold_kw", None)
+            if "threshold_unit" in payload and payload["threshold_unit"] is not None:
+                payload["threshold_unit"] = str(payload["threshold_unit"]).strip() or None
             payload["device_number"] = device_number
 
             if device_uuid is None or not str(device_uuid).strip():

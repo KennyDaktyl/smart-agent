@@ -3,6 +3,8 @@
   "microcontroller_uuid": "00000000-0000-0000-0000-000000000000",
   "provider_uuid": "00000000-0000-0000-0000-000000000000",
   "unit": "kW",
+  "provider_has_power_meter": true,
+  "provider_has_energy_storage": true,
   "active_low": false,
 
   "heartbeat_interval": 60,
@@ -16,6 +18,18 @@
       "mode": "AUTO",
       "rated_power": 2.0,
       "threshold_value": 3.0,
+      "threshold_unit": "kW",
+      "auto_rule": {
+        "operator": "ANY",
+        "items": [
+          {
+            "source": "provider_primary_power",
+            "comparator": "gte",
+            "value": 3.0,
+            "unit": "kW"
+          }
+        ]
+      },
       "desired_state": null,
       "is_on": false
     },
@@ -26,6 +40,29 @@
       "mode": "AUTO",
       "rated_power": 2.0,
       "threshold_value": 2.0,
+      "threshold_unit": "kW",
+      "auto_rule": {
+        "operator": "ANY",
+        "items": [
+          {
+            "operator": "ALL",
+            "items": [
+              {
+                "source": "provider_primary_power",
+                "comparator": "gte",
+                "value": 2.0,
+                "unit": "kW"
+              },
+              {
+                "source": "provider_battery_soc",
+                "comparator": "gte",
+                "value": 30.0,
+                "unit": "%"
+              }
+            ]
+          }
+        ]
+      },
       "desired_state": null,
       "is_on": false
     }

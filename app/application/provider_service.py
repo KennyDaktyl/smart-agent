@@ -16,6 +16,8 @@ class ProviderUpdateResult:
     provider_uuid: str
     previous_unit: str | None
     unit: str | None
+    has_power_meter: bool
+    has_energy_storage: bool
 
 
 class ProviderService:
@@ -23,6 +25,8 @@ class ProviderService:
         self,
         provider_uuid: str,
         unit: str | None = None,
+        has_power_meter: bool | None = None,
+        has_energy_storage: bool | None = None,
     ) -> ProviderUpdateResult:
         normalized_provider_uuid = provider_uuid.strip()
         if not normalized_provider_uuid:
@@ -35,15 +39,30 @@ class ProviderService:
         previous_provider_uuid = config.provider_uuid
         microcontroller_uuid = config.microcontroller_uuid
         previous_unit = config.unit
+        normalized_has_power_meter = bool(
+            config.provider_has_power_meter
+            if has_power_meter is None
+            else has_power_meter
+        )
+        normalized_has_energy_storage = bool(
+            config.provider_has_energy_storage
+            if has_energy_storage is None
+            else has_energy_storage
+        )
 
         if (
             normalized_provider_uuid == previous_provider_uuid
             and normalized_unit == previous_unit
+            and normalized_has_power_meter == config.provider_has_power_meter
+            and normalized_has_energy_storage == config.provider_has_energy_storage
         ):
             logger.info(
-                "Provider config already set: provider_uuid=%s unit=%s",
+                "Provider config already set: provider_uuid=%s unit=%s "
+                "has_power_meter=%s has_energy_storage=%s",
                 normalized_provider_uuid,
                 normalized_unit,
+                normalized_has_power_meter,
+                normalized_has_energy_storage,
             )
             return ProviderUpdateResult(
                 ok=True,
@@ -53,6 +72,8 @@ class ProviderService:
                 provider_uuid=normalized_provider_uuid,
                 previous_unit=previous_unit,
                 unit=normalized_unit,
+                has_power_meter=normalized_has_power_meter,
+                has_energy_storage=normalized_has_energy_storage,
             )
 
         await provider_subscription_service.switch_provider_uuid(normalized_provider_uuid)
@@ -60,6 +81,8 @@ class ProviderService:
             domain_config_repository.update(
                 provider_uuid=normalized_provider_uuid,
                 unit=normalized_unit,
+                provider_has_power_meter=normalized_has_power_meter,
+                provider_has_energy_storage=normalized_has_energy_storage,
             )
         except Exception:
             logger.exception(
@@ -81,11 +104,14 @@ class ProviderService:
 
         logger.info(
             "Provider config updated | previous_uuid=%s current_uuid=%s "
-            "previous_unit=%s current_unit=%s",
+            "previous_unit=%s current_unit=%s has_power_meter=%s "
+            "has_energy_storage=%s",
             previous_provider_uuid,
             normalized_provider_uuid,
             previous_unit,
             normalized_unit,
+            normalized_has_power_meter,
+            normalized_has_energy_storage,
         )
         return ProviderUpdateResult(
             ok=True,
@@ -95,6 +121,8 @@ class ProviderService:
             provider_uuid=normalized_provider_uuid,
             previous_unit=previous_unit,
             unit=normalized_unit,
+            has_power_meter=normalized_has_power_meter,
+            has_energy_storage=normalized_has_energy_storage,
         )
 
 

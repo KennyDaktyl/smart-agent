@@ -240,6 +240,8 @@ class GPIOService:
             mode=mode,
             rated_power=payload.rated_power,
             threshold_value=payload.threshold_value,
+            threshold_unit=payload.threshold_unit,
+            auto_rule=payload.auto_rule,
             desired_state=initial_desired_state,
         )
 
@@ -297,6 +299,10 @@ class GPIOService:
 
         if "threshold_value" in payload.model_fields_set:
             candidate_device.threshold_value = payload.threshold_value
+        if "threshold_unit" in payload.model_fields_set:
+            candidate_device.threshold_unit = payload.threshold_unit
+        if "auto_rule" in payload.model_fields_set:
+            candidate_device.auto_rule = payload.auto_rule
 
         try:
             self._persist_candidate_config(candidate_config)

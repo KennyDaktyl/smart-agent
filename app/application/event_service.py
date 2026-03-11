@@ -68,13 +68,14 @@ class EventService:
     async def _handle_device_created(self, event: DeviceCreatedEvent):
         logging.info(
             "Creating device -> device_id=%s device_uuid=%s device_number=%s mode=%s "
-            "rated_power=%s threshold_value=%s is_on=%s",
+            "rated_power=%s threshold_value=%s auto_rule=%s is_on=%s",
             event.data.device_id,
             event.data.device_uuid,
             event.data.device_number,
             event.data.mode,
             event.data.rated_power,
             event.data.threshold_value,
+            event.data.auto_rule.model_dump() if event.data.auto_rule else None,
             event.data.is_on,
         )
         return gpio_service.create_device(event.data)
@@ -89,11 +90,13 @@ class EventService:
 
     async def _handle_power_reading(self, event: PowerReadingEvent):
         logging.info(
-            "Handling power reading -> value=%s unit=%s",
+            "Handling power reading -> value=%s unit=%s grid_power=%s battery_soc=%s",
             event.data.value,
             event.data.unit,
+            event.data.grid_power.value if event.data.grid_power else None,
+            event.data.battery_soc.value if event.data.battery_soc else None,
         )
-        await power_reading_service.handle_power(value=event.data.value)
+        await power_reading_service.handle_power(event.data)
         return True
 
     async def _handle_device_command(self, event: DeviceCommandEvent):
@@ -102,13 +105,18 @@ class EventService:
 
     async def _handle_provider_updated(self, event: ProviderUpdatedEvent):
         logging.info(
-            "Updating provider config -> provider_uuid=%s unit=%s",
+            "Updating provider config -> provider_uuid=%s unit=%s has_power_meter=%s "
+            "has_energy_storage=%s",
             event.data.provider_uuid,
             event.data.unit,
+            event.data.has_power_meter,
+            event.data.has_energy_storage,
         )
         return await provider_service.update_provider_uuid(
             event.data.provider_uuid,
             event.data.unit,
+            event.data.has_power_meter,
+            event.data.has_energy_storage,
         )
 
     async def _handle_microcontroller_command(self, event: MicrocontrollerCommandEvent):

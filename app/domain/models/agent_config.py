@@ -3,6 +3,8 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.domain.automation_rule import AutomationRuleGroup
+
 
 class DeviceMode(str, Enum):
     MANUAL = "MANUAL"
@@ -18,6 +20,8 @@ class DeviceConfig(BaseModel):
     mode: DeviceMode
     rated_power: Optional[float] = None
     threshold_value: Optional[float] = None
+    threshold_unit: Optional[str] = None
+    auto_rule: Optional[AutomationRuleGroup] = None
     desired_state: Optional[bool] = None
 
     @field_validator("device_number")
@@ -41,6 +45,8 @@ class AgentConfig(BaseModel):
     microcontroller_uuid: str
     provider_uuid: str
     unit: Optional[str] = None
+    provider_has_power_meter: bool = False
+    provider_has_energy_storage: bool = False
     heartbeat_interval: int = 60
     device_max: int = 1
     devices: Dict[int, DeviceConfig] = Field(default_factory=dict)
