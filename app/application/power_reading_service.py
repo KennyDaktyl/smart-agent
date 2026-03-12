@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional
 
+from app.application.device_dependency_service import device_dependency_service
 from app.application.gpio_service import gpio_service
 from app.core.device_event_stream_service import device_event_stream_service
 from app.core.heartbeat_service import (
@@ -262,6 +263,10 @@ class PowerReadingService:
                 )
 
             should_turn_on = evaluate_rule(rule, measurements)
+            effective_target_state = device_dependency_service.resolve_requested_state(
+                device_number=device.device_number,
+                requested_state=should_turn_on,
+            )
             current_is_on = gpio_manager.read_is_on_by_number(device.device_number)
 
             logging.info(
@@ -274,12 +279,12 @@ class PowerReadingService:
                 battery_value,
             )
 
-            if current_is_on == should_turn_on:
+            if current_is_on == effective_target_state:
                 continue
 
             changed = gpio_manager.set_state_by_number(
                 device.device_number,
-                should_turn_on,
+                effective_target_state,
             )
             if not changed:
                 logging.error(
@@ -298,14 +303,17 @@ class PowerReadingService:
 
             self._sync_state_or_log_error(
                 device=device,
-                is_on=should_turn_on,
+                is_on=effective_target_state,
                 power_value=power_value,
+            )
+            device_dependency_service.handle_source_state_change(
+                source_device_number=device.device_number
             )
 
             trigger_reason = DeviceTriggerReason.AUTO_TRIGGER
             event_type = DeviceEventType.AUTO_TRIGGER
             if (
-                not should_turn_on
+                not effective_target_state
                 and self._has_missing_required_metrics(
                     rule=rule,
                     measurements=measurements,
@@ -317,14 +325,14 @@ class PowerReadingService:
 
             self._log_backend_event(
                 device=device,
-                is_on=should_turn_on,
+                is_on=effective_target_state,
                 event_type=event_type,
                 trigger_reason=trigger_reason,
                 power_value=power_value,
             )
             await self._publish_state_change_device_event(
                 device=device,
-                is_on=should_turn_on,
+                is_on=effective_target_state,
                 event_type=event_type,
                 trigger_reason=trigger_reason,
                 power_value=power_value,

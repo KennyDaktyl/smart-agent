@@ -3,6 +3,7 @@ import asyncio
 from typing import Optional
 
 from app.application.device_factory import merge_configs
+from app.application.device_dependency_service import device_dependency_service
 from app.core.device_event_stream_service import device_event_stream_service
 from app.core.heartbeat_service import (
     HeartbeatPublishTrigger,
@@ -149,6 +150,7 @@ class GPIOService:
         merged_devices = merge_configs(candidate_config, hardware_config)
         domain_config_repository.update(**candidate_config.model_dump())
         gpio_manager.load_devices(merged_devices)
+        device_dependency_service.reconcile_all()
         self._emit_state_changes_after_reload(previous_states=previous_states)
         return True
 
@@ -242,6 +244,8 @@ class GPIOService:
             threshold_value=payload.threshold_value,
             threshold_unit=payload.threshold_unit,
             auto_rule=payload.auto_rule,
+            device_dependency_rule=payload.device_dependency_rule,
+            temperature_control=payload.temperature_control,
             desired_state=initial_desired_state,
         )
 
@@ -303,6 +307,10 @@ class GPIOService:
             candidate_device.threshold_unit = payload.threshold_unit
         if "auto_rule" in payload.model_fields_set:
             candidate_device.auto_rule = payload.auto_rule
+        if "device_dependency_rule" in payload.model_fields_set:
+            candidate_device.device_dependency_rule = payload.device_dependency_rule
+        if "temperature_control" in payload.model_fields_set:
+            candidate_device.temperature_control = payload.temperature_control
 
         try:
             self._persist_candidate_config(candidate_config)
@@ -380,8 +388,27 @@ class GPIOService:
         device.mode = command_mode
         device.desired_state = payload.is_on if command_mode == DeviceMode.MANUAL else None
 
+        if is_scheduler_command and payload.is_on and payload.device_dependency_rule is not None:
+            device_dependency_service.set_scheduler_rule(
+                source_device_number=device.device_number,
+                rule=payload.device_dependency_rule,
+            )
+        elif is_scheduler_command and not payload.is_on:
+            cleared_rule = device_dependency_service.clear_scheduler_rule(
+                source_device_number=device.device_number
+            )
+            if cleared_rule is not None:
+                device_dependency_service.reconcile_target(
+                    target_device_number=cleared_rule.target_device_number
+                )
+
+        effective_target_state = device_dependency_service.resolve_requested_state(
+            device_number=device.device_number,
+            requested_state=payload.is_on,
+        )
+
         current_state = gpio_manager.read_is_on_by_number(device.device_number)
-        if current_state == payload.is_on:
+        if current_state == effective_target_state:
             if not self.sync_device_state_to_config(
                 device_number=device.device_number,
                 mode_override=command_mode,
@@ -390,11 +417,15 @@ class GPIOService:
             device.desired_state = (
                 current_state if command_mode == DeviceMode.MANUAL else None
             )
+            if is_scheduler_command:
+                device_dependency_service.handle_source_state_change(
+                    source_device_number=device.device_number
+                )
             return device
 
         changed = gpio_manager.set_state_by_number(
             device.device_number,
-            payload.is_on,
+            effective_target_state,
         )
 
         if not changed:
@@ -409,6 +440,10 @@ class GPIOService:
         actual_state = gpio_manager.read_is_on_by_number(device.device_number)
         device.desired_state = (
             actual_state if command_mode == DeviceMode.MANUAL else None
+        )
+
+        device_dependency_service.handle_source_state_change(
+            source_device_number=device.device_number
         )
 
         backend_adapter.log_device_event(

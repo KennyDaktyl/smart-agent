@@ -2,6 +2,9 @@ import asyncio
 import sentry_sdk
 
 from app.application.device_factory import merge_configs
+from app.application.device_dependency_service import device_dependency_service
+from app.application.sensor_polling_service import sensor_polling_service
+from app.application.temperature_control_service import temperature_control_service
 from app.core.config import settings
 from app.core.logging_config import logger
 from app.core.nats_subjects import NatsSubjects
@@ -50,6 +53,7 @@ async def bootstrap_gpio():
     )
 
     gpio_manager.load_devices(merged_devices)
+    device_dependency_service.reconcile_all()
 
     return domain_config
 
@@ -89,6 +93,8 @@ async def main():
 
         domain_config = await bootstrap_gpio()
         await setup_nats(domain_config)
+        await sensor_polling_service.start()
+        await temperature_control_service.start()
         await asyncio.Event().wait()
 
     except asyncio.CancelledError:
@@ -100,6 +106,12 @@ async def main():
     finally:
         logger.info("Stopping heartbeat...")
         await heartbeat_service.stop()
+
+        logger.info("Stopping temperature control...")
+        await temperature_control_service.stop()
+
+        logger.info("Stopping sensor polling...")
+        await sensor_polling_service.stop()
 
         logger.info("Closing NATS connection...")
         try:

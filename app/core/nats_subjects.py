@@ -17,6 +17,7 @@ class ProviderEvents:
 
 class AgentEvents:
     HEARTBEAT = "heartbeat"
+    SENSOR_READING = "sensor_reading"
     STATUS = "status"
 
 

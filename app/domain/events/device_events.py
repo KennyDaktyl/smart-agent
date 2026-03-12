@@ -4,6 +4,9 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.automation_rule import AutomationRuleGroup
 from app.domain.events.enums import EventType, MicrocontrollerCommandType
+from app.domain.models.device_dependency import DeviceDependencyRule
+from app.domain.models.scheduler_policy import SchedulerControlPolicy
+from app.domain.models.sensor import TemperatureControlConfig
 
 
 class BaseEvent(BaseModel):
@@ -27,6 +30,8 @@ class DeviceCreatedPayload(BaseModel):
     threshold_value: Optional[float] = None
     threshold_unit: Optional[str] = None
     auto_rule: Optional[AutomationRuleGroup] = None
+    device_dependency_rule: Optional[DeviceDependencyRule] = None
+    temperature_control: Optional[TemperatureControlConfig] = None
     is_on: bool = Field(
         default=False,
         validation_alias=AliasChoices("is_on", "manual_state", "desired_state"),
@@ -64,6 +69,8 @@ class DeviceUpdatedPayload(BaseModel):
     )
     threshold_unit: Optional[str] = None
     auto_rule: Optional[AutomationRuleGroup] = None
+    device_dependency_rule: Optional[DeviceDependencyRule] = None
+    temperature_control: Optional[TemperatureControlConfig] = None
 
     @field_validator("device_uuid")
     @classmethod
@@ -120,7 +127,11 @@ class DeviceCommandPayload(BaseModel):
     device_id: int
     device_number: int
     mode: str
+    command: str = "SET_STATE"
     is_on: bool
+    scheduler_policy_enabled: Optional[bool] = None
+    scheduler_policy: Optional[SchedulerControlPolicy] = None
+    device_dependency_rule: Optional[DeviceDependencyRule] = None
 
 
 class DeviceCommandEvent(BaseEvent):

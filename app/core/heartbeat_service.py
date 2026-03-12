@@ -6,6 +6,7 @@ from typing import Optional
 from app.core.logging_config import logger
 from app.core.nats_client import nats_client
 from app.core.nats_subjects import AgentEvents, NatsSubjects
+from app.application.sensor_polling_service import sensor_polling_service
 from app.domain.events.enums import EventType, HeartbeatStatus
 from app.infrastructure.config.domain_config_repository import domain_config_repository
 from app.infrastructure.gpio.gpio_manager import gpio_manager
@@ -73,6 +74,7 @@ class HeartbeatService:
             "timestamp": int(datetime.now(timezone.utc).timestamp()),
             "heartbeat_interval": self._interval,
             "available_sensors": list(config.available_sensors),
+            "sensor_snapshot": sensor_polling_service.get_sensor_snapshots(),
             "devices": gpio_manager.get_devices_status(),
         }
 

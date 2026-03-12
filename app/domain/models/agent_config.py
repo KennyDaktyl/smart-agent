@@ -4,6 +4,8 @@ from typing import Dict, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domain.automation_rule import AutomationRuleGroup
+from app.domain.models.device_dependency import DeviceDependencyRule
+from app.domain.models.sensor import TemperatureControlConfig
 
 
 class DeviceMode(str, Enum):
@@ -22,6 +24,8 @@ class DeviceConfig(BaseModel):
     threshold_value: Optional[float] = None
     threshold_unit: Optional[str] = None
     auto_rule: Optional[AutomationRuleGroup] = None
+    device_dependency_rule: Optional[DeviceDependencyRule] = None
+    temperature_control: Optional[TemperatureControlConfig] = None
     desired_state: Optional[bool] = None
 
     @field_validator("device_number")
@@ -48,6 +52,9 @@ class AgentConfig(BaseModel):
     provider_has_power_meter: bool = False
     provider_has_energy_storage: bool = False
     heartbeat_interval: int = 60
+    sensor_poll_interval_sec: int = 5
+    sensor_publish_interval_sec: int = 60
+    sensor_change_threshold_c: float = 0.5
     device_max: int = 1
     available_sensors: list[str] = Field(default_factory=list)
     devices: Dict[int, DeviceConfig] = Field(default_factory=dict)
@@ -64,6 +71,20 @@ class AgentConfig(BaseModel):
     def validate_heartbeat_interval(cls, value: int) -> int:
         if value < 1:
             raise ValueError("heartbeat_interval must be >= 1")
+        return value
+
+    @field_validator("sensor_poll_interval_sec", "sensor_publish_interval_sec")
+    @classmethod
+    def validate_sensor_interval(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("sensor intervals must be >= 1")
+        return value
+
+    @field_validator("sensor_change_threshold_c")
+    @classmethod
+    def validate_sensor_change_threshold(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("sensor_change_threshold_c must be >= 0")
         return value
 
     @field_validator("provider_uuid")

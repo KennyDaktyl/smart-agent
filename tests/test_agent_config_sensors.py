@@ -38,6 +38,21 @@ class AgentConfigSensorsTests(unittest.TestCase):
                 SimpleNamespace(load=lambda: config),
             ),
             patch(
+                "app.core.heartbeat_service.sensor_polling_service",
+                SimpleNamespace(
+                    get_sensor_snapshots=lambda: [
+                        {
+                            "sensor_id": "tank-top",
+                            "sensor_type": "ds18b20",
+                            "value": 70.0,
+                            "unit": "C",
+                            "measured_at": "2026-03-12T10:00:00+00:00",
+                            "status": "OK",
+                        }
+                    ]
+                ),
+            ),
+            patch(
                 "app.core.heartbeat_service.gpio_manager",
                 SimpleNamespace(get_devices_status=lambda: []),
             ),
@@ -45,6 +60,8 @@ class AgentConfigSensorsTests(unittest.TestCase):
             payload = heartbeat_service._build_heartbeat_payload()
 
         self.assertEqual(payload["available_sensors"], ["ds18b20"])
+        self.assertEqual(len(payload["sensor_snapshot"]), 1)
+        self.assertEqual(payload["sensor_snapshot"][0]["sensor_id"], "tank-top")
         self.assertEqual(payload["uuid"], config.microcontroller_uuid)
 
 

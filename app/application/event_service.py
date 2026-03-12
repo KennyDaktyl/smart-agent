@@ -8,6 +8,7 @@ from app.application.microcontroller_command_service import (
 )
 from app.application.power_reading_service import power_reading_service
 from app.application.provider_service import provider_service
+from app.application.temperature_control_service import temperature_control_service
 from app.domain.events.device_events import (
     DeviceCommandEvent,
     DeviceCreatedEvent,
@@ -101,6 +102,10 @@ class EventService:
 
     async def _handle_device_command(self, event: DeviceCommandEvent):
         logging.info(f"Executing device command -> {event.data}")
+        if event.data.command == "SET_SCHEDULER_POLICY":
+            return await temperature_control_service.apply_scheduler_policy_command(
+                event.data
+            )
         return gpio_service.set_state_from_command(event.data)
 
     async def _handle_provider_updated(self, event: ProviderUpdatedEvent):

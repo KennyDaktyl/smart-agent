@@ -59,6 +59,8 @@ def merge_configs(
                 threshold_value=domain_device.threshold_value,
                 threshold_unit=domain_device.threshold_unit,
                 auto_rule=domain_device.auto_rule,
+                device_dependency_rule=domain_device.device_dependency_rule,
+                temperature_control=domain_device.temperature_control,
                 rated_power=domain_device.rated_power,
                 desired_state=domain_device.desired_state,
             )

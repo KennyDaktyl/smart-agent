@@ -8,5 +8,13 @@
       "gpio": 18,
       "active_low": false
     }
+  },
+  "sensors": {
+    "tank-top": {
+      "type": "ds18b20",
+      "address": "28-000000000001",
+      "unit": "C",
+      "offset_c": 0.0
+    }
   }
 }

@@ -6,6 +6,9 @@
   "provider_has_power_meter": true,
   "provider_has_energy_storage": true,
   "available_sensors": ["ds18b20"],
+  "sensor_poll_interval_sec": 5,
+  "sensor_publish_interval_sec": 60,
+  "sensor_change_threshold_c": 0.5,
   "active_low": false,
 
   "heartbeat_interval": 60,
@@ -30,6 +33,13 @@
             "unit": "kW"
           }
         ]
+      },
+      "temperature_control": {
+        "enabled": true,
+        "sensor_id": "tank-top",
+        "target_temperature_c": 70.0,
+        "stop_above_target_delta_c": 2.0,
+        "start_below_target_delta_c": 3.0
       },
       "desired_state": null,
       "is_on": false

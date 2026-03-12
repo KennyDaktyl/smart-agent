@@ -28,6 +28,14 @@ class DeviceTriggerReason(str, Enum):
     DEVICE_COMMAND = "DEVICE_COMMAND"
     SCHEDULE_TRIGGER = "SCHEDULE_TRIGGER"
     AUTO_TRIGGER = "AUTO_TRIGGER"
+    TEMPERATURE_HYSTERESIS_ON = "TEMPERATURE_HYSTERESIS_ON"
+    TEMPERATURE_HYSTERESIS_OFF = "TEMPERATURE_HYSTERESIS_OFF"
+    SCHEDULER_POLICY_ENABLED = "SCHEDULER_POLICY_ENABLED"
+    SCHEDULER_POLICY_DISABLED = "SCHEDULER_POLICY_DISABLED"
+    SCHEDULER_POLICY_HEAT_UP = "SCHEDULER_POLICY_HEAT_UP"
+    SCHEDULER_POLICY_HOLD = "SCHEDULER_POLICY_HOLD"
+    DEVICE_DEPENDENCY_ON = "DEVICE_DEPENDENCY_ON"
+    DEVICE_DEPENDENCY_OFF = "DEVICE_DEPENDENCY_OFF"
     POWER_MISSING = "POWER_MISSING"
     STATE_CHANGE_FAILED = "STATE_CHANGE_FAILED"
     CONFIG_SYNC_FAILED = "CONFIG_SYNC_FAILED"
@@ -392,6 +400,8 @@ class BackendAdapter:
         is_on: bool | None,
         trigger_reason: DeviceTriggerReason | str,
         power: float | None = None,
+        measured_value: float | None = None,
+        measured_unit: str | None = None,
         source: EventSource | str = EventSource.AGENT,
     ):
         if not self.is_enabled():
@@ -428,8 +438,14 @@ class BackendAdapter:
             "device_state": device_state,
             "pin_state": is_on,
             "is_on": is_on,
-            "measured_value": power,
-            "measured_unit": "kW" if power is not None else None,
+            "measured_value": (
+                measured_value if measured_value is not None else power
+            ),
+            "measured_unit": (
+                measured_unit
+                if measured_value is not None
+                else ("kW" if power is not None else None)
+            ),
             "trigger_reason": trigger_reason_value,
             "source": source_value,
             "created_at": datetime.now(timezone.utc).isoformat(),

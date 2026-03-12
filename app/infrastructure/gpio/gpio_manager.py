@@ -137,6 +137,21 @@ class GPIOManager:
 
         return True
 
+    def set_runtime_override_by_number(self, device_number: int, is_on: bool) -> bool:
+        device = self.get_by_number(device_number)
+
+        if not device:
+            logger.error(f"Device number {device_number} not found")
+            return False
+
+        gpio_controller.write(device.gpio, is_on, device.active_low)
+        logger.info(
+            "Runtime override applied for device_number=%s -> %s",
+            device_number,
+            "ON" if is_on else "OFF",
+        )
+        return True
+
     def force_all_off(self, reason: str = "SAFETY") -> None:
         logger.warning(f"Forcing all devices OFF due to {reason}")
 

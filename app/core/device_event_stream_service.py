@@ -44,7 +44,7 @@ class DeviceEventStreamService:
         device: RuntimeDevice,
         event_type: DeviceEventType,
         is_on: bool,
-        trigger_reason: DeviceTriggerReason,
+        trigger_reason: DeviceTriggerReason | str,
         measured_value: float | None = None,
         measured_unit: str = "kW",
         source: EventSource = EventSource.AGENT,
@@ -60,6 +60,11 @@ class DeviceEventStreamService:
 
         event_name = self._event_name(is_on)
         device_state = self._device_state(is_on)
+        trigger_reason_value = (
+            trigger_reason.value
+            if isinstance(trigger_reason, DeviceTriggerReason)
+            else str(trigger_reason)
+        )
         payload = {
             "id": None,
             "device_id": device.device_id,
@@ -69,7 +74,7 @@ class DeviceEventStreamService:
             "pin_state": is_on,
             "measured_value": measured_value,
             "measured_unit": measured_unit if measured_value is not None else None,
-            "trigger_reason": trigger_reason.value,
+            "trigger_reason": trigger_reason_value,
             "source": source.value,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
