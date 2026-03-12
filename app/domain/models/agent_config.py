@@ -49,6 +49,7 @@ class AgentConfig(BaseModel):
     provider_has_energy_storage: bool = False
     heartbeat_interval: int = 60
     device_max: int = 1
+    available_sensors: list[str] = Field(default_factory=list)
     devices: Dict[int, DeviceConfig] = Field(default_factory=dict)
 
     @field_validator("device_max")
@@ -80,6 +81,28 @@ class AgentConfig(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("available_sensors", mode="before")
+    @classmethod
+    def validate_available_sensors(cls, value) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("available_sensors must be a list")
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+
+        for item in value:
+            sensor = str(item).strip().lower()
+            if not sensor:
+                continue
+            if sensor in seen:
+                continue
+            seen.add(sensor)
+            normalized.append(sensor)
+
+        return normalized
 
     @model_validator(mode="after")
     def validate_devices_mapping(self):

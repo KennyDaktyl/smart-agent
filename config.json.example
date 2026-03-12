@@ -5,6 +5,7 @@
   "unit": "kW",
   "provider_has_power_meter": true,
   "provider_has_energy_storage": true,
+  "available_sensors": ["ds18b20"],
   "active_low": false,
 
   "heartbeat_interval": 60,

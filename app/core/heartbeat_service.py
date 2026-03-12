@@ -66,11 +66,13 @@ class HeartbeatService:
         await nats_client.js_publish(subject, event)
 
     def _build_heartbeat_payload(self) -> dict:
+        config = domain_config_repository.load()
         return {
             "uuid": self._micro_uuid,
             "status": HeartbeatStatus.ONLINE.value,
             "timestamp": int(datetime.now(timezone.utc).timestamp()),
             "heartbeat_interval": self._interval,
+            "available_sensors": list(config.available_sensors),
             "devices": gpio_manager.get_devices_status(),
         }
 
