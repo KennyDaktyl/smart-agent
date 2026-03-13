@@ -124,6 +124,11 @@ class DeviceDependencyServiceTests(unittest.IsolatedAsyncioTestCase):
             when_source_on="ON",
             when_source_off="OFF",
         )
+        backend_adapter_mock = SimpleNamespace(log_device_event=Mock())
+        device_event_stream_mock = SimpleNamespace(
+            publish_state_change=AsyncMock(return_value=True)
+        )
+        heartbeat_mock = SimpleNamespace(publish_now=AsyncMock(return_value=True))
 
         with (
             patch(
@@ -132,15 +137,15 @@ class DeviceDependencyServiceTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "app.application.device_dependency_service.backend_adapter",
-                SimpleNamespace(log_device_event=Mock()),
+                backend_adapter_mock,
             ),
             patch(
                 "app.application.device_dependency_service.device_event_stream_service",
-                SimpleNamespace(publish_state_change=AsyncMock(return_value=True)),
+                device_event_stream_mock,
             ),
             patch(
                 "app.application.device_dependency_service.heartbeat_service",
-                SimpleNamespace(publish_now=AsyncMock(return_value=True)),
+                heartbeat_mock,
             ),
         ):
             service.set_scheduler_rule(source_device_number=1, rule=scheduler_rule)
@@ -150,6 +155,9 @@ class DeviceDependencyServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(changed)
             self.assertTrue(fake_gpio.read_is_on_by_number(2))
             self.assertFalse(target.desired_state)
+            backend_adapter_mock.log_device_event.assert_called()
+            device_event_stream_mock.publish_state_change.assert_awaited()
+            heartbeat_mock.publish_now.assert_awaited()
 
             cleared_rule = service.clear_scheduler_rule(source_device_number=1)
             self.assertIsNotNone(cleared_rule)

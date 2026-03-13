@@ -29,6 +29,16 @@ class DeviceDependencyService:
         self._active_scheduler_rules: dict[int, DeviceDependencyRule] = {}
 
     @staticmethod
+    def _schedule_or_run(coro) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(coro)
+            return
+
+        loop.create_task(coro)
+
+    @staticmethod
     def _is_effective(rule: DeviceDependencyRule | None) -> bool:
         if rule is None:
             return False
@@ -191,12 +201,7 @@ class DeviceDependencyService:
             trigger_reason=trigger_reason,
         )
 
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-
-        loop.create_task(
+        DeviceDependencyService._schedule_or_run(
             device_event_stream_service.publish_state_change(
                 device=target_device,
                 is_on=is_on,
@@ -204,7 +209,7 @@ class DeviceDependencyService:
                 trigger_reason=trigger_reason,
             )
         )
-        loop.create_task(
+        DeviceDependencyService._schedule_or_run(
             heartbeat_service.publish_now(
                 trigger=HeartbeatPublishTrigger.STATE_CHANGE,
             )
