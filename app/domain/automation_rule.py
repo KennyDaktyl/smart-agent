@@ -108,6 +108,13 @@ class MetricSnapshot:
     unit: str | None = None
 
 
+@dataclass(frozen=True)
+class MatchedCondition:
+    condition: AutomationRuleCondition
+    measured_value: float
+    measured_unit: str | None = None
+
+
 def build_legacy_power_rule(
     *,
     value: float,
@@ -172,6 +179,13 @@ def evaluate_rule(
     return _evaluate_group(rule, measurements)
 
 
+def find_first_matching_condition(
+    rule: AutomationRuleGroup,
+    measurements: Mapping[AutomationRuleSource, MetricSnapshot | None],
+) -> MatchedCondition | None:
+    return _find_first_match(rule, measurements)
+
+
 def _evaluate_group(
     group: AutomationRuleGroup,
     measurements: Mapping[AutomationRuleSource, MetricSnapshot | None],
@@ -208,6 +222,52 @@ def _evaluate_condition(
         threshold_value=condition.value,
         comparator=condition.comparator,
     )
+
+
+def _find_first_match(
+    group: AutomationRuleGroup,
+    measurements: Mapping[AutomationRuleSource, MetricSnapshot | None],
+) -> MatchedCondition | None:
+    if group.operator == AutomationRuleGroupOperator.ALL:
+        if not _evaluate_group(group, measurements):
+            return None
+        for item in group.items or []:
+            match = _find_first_match_in_item(item, measurements)
+            if match is not None:
+                return match
+        return None
+
+    for item in group.items or []:
+        match = _find_first_match_in_item(item, measurements)
+        if match is not None:
+            return match
+    return None
+
+
+def _find_first_match_in_item(
+    item: AutomationRuleCondition | AutomationRuleGroup,
+    measurements: Mapping[AutomationRuleSource, MetricSnapshot | None],
+) -> MatchedCondition | None:
+    if isinstance(item, AutomationRuleCondition):
+        metric = measurements.get(item.source)
+        if metric is None:
+            return None
+        measured_value = _normalize_metric_value(metric=metric, condition=item)
+        if measured_value is None:
+            return None
+        if not _compare_values(
+            measured_value=measured_value,
+            threshold_value=item.value,
+            comparator=item.comparator,
+        ):
+            return None
+        return MatchedCondition(
+            condition=item,
+            measured_value=metric.value,
+            measured_unit=metric.unit,
+        )
+
+    return _find_first_match(item, measurements)
 
 
 def _normalize_metric_value(

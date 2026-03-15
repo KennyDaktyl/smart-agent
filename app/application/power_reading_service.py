@@ -11,9 +11,11 @@ from app.core.heartbeat_service import (
 from app.domain.automation_rule import (
     AutomationRuleGroup,
     AutomationRuleSource,
+    MatchedCondition,
     MetricSnapshot,
     build_legacy_power_rule,
     evaluate_rule,
+    find_first_matching_condition,
     iter_conditions,
 )
 from app.domain.events.device_events import PowerReadingPayload
@@ -53,6 +55,9 @@ class PowerReadingService:
         event_type: DeviceEventType,
         trigger_reason: DeviceTriggerReason,
         power_value: Optional[float],
+        power_unit: Optional[str] = None,
+        measured_value: Optional[float] = None,
+        measured_unit: Optional[str] = None,
     ) -> None:
         backend_adapter.log_device_event(
             device_uuid=device.device_uuid,
@@ -62,6 +67,9 @@ class PowerReadingService:
             is_on=is_on,
             trigger_reason=trigger_reason,
             power=power_value,
+            power_unit=power_unit,
+            measured_value=measured_value,
+            measured_unit=measured_unit,
         )
 
     def _sync_state_or_log_error(
@@ -70,6 +78,7 @@ class PowerReadingService:
         device: RuntimeDevice,
         is_on: bool,
         power_value: Optional[float],
+        power_unit: Optional[str] = None,
     ) -> bool:
         if gpio_service.sync_device_state_to_config(device_number=device.device_number):
             return True
@@ -84,6 +93,7 @@ class PowerReadingService:
             event_type=DeviceEventType.ERROR,
             trigger_reason=DeviceTriggerReason.CONFIG_SYNC_FAILED,
             power_value=power_value,
+            power_unit=power_unit,
         )
         return False
 
@@ -95,13 +105,17 @@ class PowerReadingService:
         event_type: DeviceEventType,
         trigger_reason: DeviceTriggerReason,
         power_value: Optional[float],
+        power_unit: Optional[str] = None,
+        measured_value: Optional[float] = None,
+        measured_unit: Optional[str] = None,
     ) -> None:
         published = await device_event_stream_service.publish_state_change(
             device=device,
             is_on=is_on,
             event_type=event_type,
             trigger_reason=trigger_reason,
-            measured_value=power_value,
+            measured_value=measured_value if measured_value is not None else power_value,
+            measured_unit=measured_unit if measured_value is not None else power_unit,
         )
         if not published:
             logging.warning(
@@ -136,6 +150,14 @@ class PowerReadingService:
             value=float(device.threshold_value),
             unit=device.threshold_unit or "W",
         )
+
+    @staticmethod
+    def _resolve_trigger_measurement(
+        *,
+        rule: AutomationRuleGroup,
+        measurements: dict[AutomationRuleSource, MetricSnapshot | None],
+    ) -> MatchedCondition | None:
+        return find_first_matching_condition(rule, measurements)
 
     @staticmethod
     def _normalize_unit(value: object) -> str | None:
@@ -240,6 +262,7 @@ class PowerReadingService:
         domain_config = domain_config_repository.load()
         measurements = self._build_measurements(payload)
         power_value = payload.value
+        power_unit = payload.unit
         battery_value = (
             measurements[AutomationRuleSource.PROVIDER_BATTERY_SOC].value
             if measurements.get(AutomationRuleSource.PROVIDER_BATTERY_SOC) is not None
@@ -281,6 +304,11 @@ class PowerReadingService:
                 )
 
             should_turn_on = evaluate_rule(rule, measurements)
+            matched_condition = (
+                self._resolve_trigger_measurement(rule=rule, measurements=measurements)
+                if should_turn_on
+                else None
+            )
             effective_target_state = device_dependency_service.resolve_requested_state(
                 device_number=device.device_number,
                 requested_state=should_turn_on,
@@ -289,12 +317,17 @@ class PowerReadingService:
 
             logging.info(
                 "AUTO device_number=%s current=%s target=%s power_value=%s "
-                "battery_soc=%s",
+                "battery_soc=%s matched_source=%s matched_value=%s matched_unit=%s",
                 device.device_number,
                 current_is_on,
                 should_turn_on,
                 power_value,
                 battery_value,
+                matched_condition.condition.source.value
+                if matched_condition is not None
+                else None,
+                matched_condition.measured_value if matched_condition is not None else None,
+                matched_condition.measured_unit if matched_condition is not None else None,
             )
 
             if current_is_on == effective_target_state:
@@ -316,6 +349,17 @@ class PowerReadingService:
                     event_type=DeviceEventType.ERROR,
                     trigger_reason=DeviceTriggerReason.STATE_CHANGE_FAILED,
                     power_value=power_value,
+                    power_unit=power_unit,
+                    measured_value=(
+                        matched_condition.measured_value
+                        if matched_condition is not None
+                        else None
+                    ),
+                    measured_unit=(
+                        matched_condition.measured_unit
+                        if matched_condition is not None
+                        else None
+                    ),
                 )
                 continue
 
@@ -323,6 +367,7 @@ class PowerReadingService:
                 device=device,
                 is_on=effective_target_state,
                 power_value=power_value,
+                power_unit=power_unit,
             )
             device_dependency_service.handle_source_state_change(
                 source_device_number=device.device_number
@@ -347,6 +392,17 @@ class PowerReadingService:
                 event_type=event_type,
                 trigger_reason=trigger_reason,
                 power_value=power_value,
+                power_unit=power_unit,
+                measured_value=(
+                    matched_condition.measured_value
+                    if matched_condition is not None
+                    else None
+                ),
+                measured_unit=(
+                    matched_condition.measured_unit
+                    if matched_condition is not None
+                    else None
+                ),
             )
             await self._publish_state_change_device_event(
                 device=device,
@@ -354,6 +410,17 @@ class PowerReadingService:
                 event_type=event_type,
                 trigger_reason=trigger_reason,
                 power_value=power_value,
+                power_unit=power_unit,
+                measured_value=(
+                    matched_condition.measured_value
+                    if matched_condition is not None
+                    else None
+                ),
+                measured_unit=(
+                    matched_condition.measured_unit
+                    if matched_condition is not None
+                    else None
+                ),
             )
             await self._publish_heartbeat_after_state_change(
                 device=device,

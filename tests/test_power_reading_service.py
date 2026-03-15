@@ -68,10 +68,35 @@ class PowerReadingServiceTests(unittest.IsolatedAsyncioTestCase):
             devices={},
         )
 
+    def _build_power_device(self) -> RuntimeDevice:
+        return RuntimeDevice(
+            device_id=2,
+            device_uuid="00000000-0000-0000-0000-000000000002",
+            device_number=1,
+            gpio=17,
+            active_low=False,
+            mode=DeviceMode.AUTO,
+            auto_rule=AutomationRuleGroup(
+                operator=AutomationRuleGroupOperator.ANY,
+                items=[
+                    AutomationRuleCondition(
+                        source=AutomationRuleSource.PROVIDER_PRIMARY_POWER,
+                        comparator=AutomationRuleComparator.GTE,
+                        value=100.0,
+                        unit="W",
+                    )
+                ],
+            ),
+        )
+
     async def test_battery_rule_turns_device_on_when_provider_supports_storage(self):
         device = self._build_device()
         fake_gpio = _FakeGpioManager([device], {1: False})
         service = PowerReadingService()
+        backend_adapter = SimpleNamespace(log_device_event=Mock())
+        device_event_stream_service = SimpleNamespace(
+            publish_state_change=AsyncMock(return_value=True)
+        )
 
         with (
             patch(
@@ -88,11 +113,11 @@ class PowerReadingServiceTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "app.application.power_reading_service.backend_adapter",
-                SimpleNamespace(log_device_event=Mock()),
+                backend_adapter,
             ),
             patch(
                 "app.application.power_reading_service.device_event_stream_service",
-                SimpleNamespace(publish_state_change=AsyncMock(return_value=True)),
+                device_event_stream_service,
             ),
             patch(
                 "app.application.power_reading_service.heartbeat_service",
@@ -108,6 +133,27 @@ class PowerReadingServiceTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(fake_gpio.read_is_on_by_number(1))
+        backend_adapter.log_device_event.assert_called_once()
+        self.assertEqual(
+            backend_adapter.log_device_event.call_args.kwargs["measured_value"],
+            45.0,
+        )
+        self.assertEqual(
+            backend_adapter.log_device_event.call_args.kwargs["measured_unit"],
+            "%",
+        )
+        self.assertEqual(
+            device_event_stream_service.publish_state_change.call_args.kwargs[
+                "measured_value"
+            ],
+            45.0,
+        )
+        self.assertEqual(
+            device_event_stream_service.publish_state_change.call_args.kwargs[
+                "measured_unit"
+            ],
+            "%",
+        )
 
     async def test_battery_rule_uses_telemetry_when_storage_flag_is_stale(self):
         device = self._build_device()
@@ -189,6 +235,67 @@ class PowerReadingServiceTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(fake_gpio.read_is_on_by_number(1))
+
+    async def test_power_rule_publishes_provider_unit_without_kw_fallback(self):
+        device = self._build_power_device()
+        fake_gpio = _FakeGpioManager([device], {1: False})
+        service = PowerReadingService()
+        backend_adapter = SimpleNamespace(log_device_event=Mock())
+        device_event_stream_service = SimpleNamespace(
+            publish_state_change=AsyncMock(return_value=True)
+        )
+
+        with (
+            patch(
+                "app.application.power_reading_service.gpio_manager",
+                fake_gpio,
+            ),
+            patch(
+                "app.application.power_reading_service.domain_config_repository",
+                SimpleNamespace(load=lambda: self._build_config(has_energy_storage=True)),
+            ),
+            patch(
+                "app.application.power_reading_service.gpio_service",
+                SimpleNamespace(sync_device_state_to_config=Mock(return_value=True)),
+            ),
+            patch(
+                "app.application.power_reading_service.backend_adapter",
+                backend_adapter,
+            ),
+            patch(
+                "app.application.power_reading_service.device_event_stream_service",
+                device_event_stream_service,
+            ),
+            patch(
+                "app.application.power_reading_service.heartbeat_service",
+                SimpleNamespace(publish_now=AsyncMock(return_value=True)),
+            ),
+        ):
+            await service.handle_power(
+                PowerReadingPayload(
+                    value=207.12,
+                    unit="W",
+                )
+            )
+
+        self.assertEqual(
+            backend_adapter.log_device_event.call_args.kwargs["power_unit"],
+            "W",
+        )
+        self.assertEqual(
+            backend_adapter.log_device_event.call_args.kwargs["measured_value"],
+            207.12,
+        )
+        self.assertEqual(
+            backend_adapter.log_device_event.call_args.kwargs["measured_unit"],
+            "W",
+        )
+        self.assertEqual(
+            device_event_stream_service.publish_state_change.call_args.kwargs[
+                "measured_unit"
+            ],
+            "W",
+        )
 
 
 if __name__ == "__main__":

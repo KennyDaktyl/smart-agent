@@ -46,7 +46,7 @@ class DeviceEventStreamService:
         is_on: bool,
         trigger_reason: DeviceTriggerReason | str,
         measured_value: float | None = None,
-        measured_unit: str = "kW",
+        measured_unit: str | None = None,
         source: EventSource = EventSource.AGENT,
     ) -> bool:
         device_uuid = (device.device_uuid or "").strip()

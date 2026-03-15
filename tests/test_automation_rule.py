@@ -8,6 +8,7 @@ from app.domain.automation_rule import (
     AutomationRuleSource,
     MetricSnapshot,
     evaluate_rule,
+    find_first_matching_condition,
 )
 
 
@@ -54,6 +55,44 @@ class AutomationRuleEvaluationTests(unittest.TestCase):
         }
 
         self.assertTrue(evaluate_rule(rule, measurements))
+
+    def test_find_first_matching_condition_prefers_first_satisfied_item(self):
+        rule = AutomationRuleGroup(
+            operator=AutomationRuleGroupOperator.ANY,
+            items=[
+                AutomationRuleCondition(
+                    source=AutomationRuleSource.PROVIDER_BATTERY_SOC,
+                    comparator=AutomationRuleComparator.GTE,
+                    value=50.0,
+                    unit="%",
+                ),
+                AutomationRuleCondition(
+                    source=AutomationRuleSource.PROVIDER_PRIMARY_POWER,
+                    comparator=AutomationRuleComparator.GTE,
+                    value=100.0,
+                    unit="W",
+                ),
+            ],
+        )
+
+        measurements = {
+            AutomationRuleSource.PROVIDER_PRIMARY_POWER: MetricSnapshot(
+                value=207.12,
+                unit="W",
+            ),
+            AutomationRuleSource.PROVIDER_BATTERY_SOC: MetricSnapshot(
+                value=95.0,
+                unit="%",
+            ),
+        }
+
+        match = find_first_matching_condition(rule, measurements)
+
+        self.assertIsNotNone(match)
+        assert match is not None
+        self.assertEqual(match.condition.source, AutomationRuleSource.PROVIDER_BATTERY_SOC)
+        self.assertEqual(match.measured_value, 95.0)
+        self.assertEqual(match.measured_unit, "%")
 
 
 if __name__ == "__main__":

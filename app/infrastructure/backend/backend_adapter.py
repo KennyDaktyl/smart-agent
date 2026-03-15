@@ -400,6 +400,7 @@ class BackendAdapter:
         is_on: bool | None,
         trigger_reason: DeviceTriggerReason | str,
         power: float | None = None,
+        power_unit: str | None = None,
         measured_value: float | None = None,
         measured_unit: str | None = None,
         source: EventSource | str = EventSource.AGENT,
@@ -444,7 +445,7 @@ class BackendAdapter:
             "measured_unit": (
                 measured_unit
                 if measured_value is not None
-                else ("kW" if power is not None else None)
+                else (power_unit if power is not None else None)
             ),
             "trigger_reason": trigger_reason_value,
             "source": source_value,
