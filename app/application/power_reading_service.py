@@ -196,6 +196,13 @@ class PowerReadingService:
             AutomationRuleSource.PROVIDER_BATTERY_SOC: battery_metric,
         }
 
+    @staticmethod
+    def _has_metric(
+        measurements: dict[AutomationRuleSource, MetricSnapshot | None],
+        source: AutomationRuleSource,
+    ) -> bool:
+        return measurements.get(source) is not None
+
     def _has_missing_required_metrics(
         self,
         *,
@@ -207,9 +214,10 @@ class PowerReadingService:
             if (
                 condition.source == AutomationRuleSource.PROVIDER_BATTERY_SOC
                 and not config.provider_has_energy_storage
+                and self._has_metric(measurements, condition.source)
             ):
-                return True
-            if measurements.get(condition.source) is None:
+                continue
+            if not self._has_metric(measurements, condition.source):
                 return True
         return False
 
@@ -231,14 +239,23 @@ class PowerReadingService:
 
         domain_config = domain_config_repository.load()
         measurements = self._build_measurements(payload)
-        if not domain_config.provider_has_energy_storage:
-            measurements[AutomationRuleSource.PROVIDER_BATTERY_SOC] = None
         power_value = payload.value
         battery_value = (
             measurements[AutomationRuleSource.PROVIDER_BATTERY_SOC].value
             if measurements.get(AutomationRuleSource.PROVIDER_BATTERY_SOC) is not None
             else None
         )
+        has_battery_soc = self._has_metric(
+            measurements,
+            AutomationRuleSource.PROVIDER_BATTERY_SOC,
+        )
+
+        if has_battery_soc and not domain_config.provider_has_energy_storage:
+            logging.warning(
+                "Provider telemetry contains battery_soc despite "
+                "provider_has_energy_storage=false in agent config. "
+                "Treating battery_soc as available telemetry."
+            )
 
         for device in auto_devices:
             rule = self._resolve_auto_rule(device)
@@ -255,6 +272,7 @@ class PowerReadingService:
                     condition.source == AutomationRuleSource.PROVIDER_BATTERY_SOC
                     for condition in iter_conditions(rule)
                 )
+                and not has_battery_soc
             ):
                 logging.warning(
                     "AUTO rule references provider_battery_soc but provider does not "
