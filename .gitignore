@@ -212,3 +212,4 @@ gpio_mapping.json
 hardware_config.json
 
 .vscode/
+.venv311/
